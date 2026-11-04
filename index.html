@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Teta Tacaro - Online</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; overflow: hidden; background: #0f172a; font-family: Arial, sans-serif; touch-action: none; }
+  #menu, #lobby {
+    position: absolute; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; background: linear-gradient(135deg, #0f172a, #1e293b);
+    z-index: 100; color: white;
+  }
+  #lobby { display: none; }
+  h1 { font-size: 42px; margin-bottom: 10px; text-align: center; }
+  .subtitle { color: #94a3b8; margin-bottom: 40px; text-align: center; }
+  button.menu-btn {
+    width: 280px; padding: 16px; margin: 10px; font-size: 18px; font-weight: bold;
+    border: none; border-radius: 12px; cursor: pointer; transition: 0.2s;
+  }
+  .btn-solo { background: #22c55e; color: white; }
+  .btn-online { background: #3b82f6; color: white; }
+  .btn-back { background: #64748b; color: white; margin-top: 20px; }
+  #playerList { background: rgba(0,0,0,0.4); padding: 20px; border-radius: 12px; min-width: 280px; margin: 20px 0; }
+  .player { padding: 8px; margin: 4px 0; background: rgba(255,255,255,0.1); border-radius: 6px; }
+  #info {
+    position: absolute; top: 10px; left: 10px; color: #fff;
+    background: rgba(0,0,0,0.75); padding: 10px; border-radius: 8px; font-size: 12px;
+    max-width: 240px; line-height: 1.4; z-index: 20; pointer-events: none; display: none;
+  }
+  #lootInfo {
+    position: absolute; bottom: 90px; left: 50%; transform: translateX(-50%);
+    color: #ffd700; background: rgba(0,0,0,0.75); padding: 8px 14px;
+    border-radius: 6px; display: none; font-weight: bold; z-index: 20; pointer-events: none;
+  }
+  #inventory {
+    position: absolute; top: 10px; right: 10px; color: #fff;
+    background: rgba(0,0,0,0.75); padding: 10px; border-radius: 8px;
+    font-size: 12px; min-width: 220px; max-height: 70vh; overflow-y: auto; z-index: 20; display: none;
+  }
+  #inventory h3 { margin: 0 0 6px 0; color: #ffd700; font-size: 14px; }
+  .inv-item { margin: 3px 0; }
+  .crafted { color: #fbbf24; font-weight: bold; }
+  #joystick-zone {
+    position: absolute; bottom: 30px; left: 30px; width: 140px; height: 140px;
+    background: rgba(255,255,255,0.08); border: 2px solid rgba(255,255,255,0.25);
+    border-radius: 50%; z-index: 30; touch-action: none; display: none;
+  }
+  #joystick-base {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    width: 60px; height: 60px; background: rgba(255,255,255,0.15);
+    border-radius: 50%; pointer-events: none;
+  }
+  #joystick-thumb {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    width: 40px; height: 40px; background: rgba(255,255,255,0.45);
+    border-radius: 50%; pointer-events: none;
+  }
+  #action-btn {
+    position: absolute; bottom: 40px; right: 40px; width: 70px; height: 70px;
+    background: rgba(255, 215, 0, 0.25); border: 2px solid #ffd700;
+    border-radius: 50%; color: #fff; font-size: 22px; font-weight: bold;
+    display: none; align-items: center; justify-content: center;
+    z-index: 30; user-select: none; touch-action: none;
+  }
+  #healthBar {
+    position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+    width: 200px; height: 20px; background: #333; border: 2px solid #fff; border-radius: 4px;
+    z-index: 20; display: none;
+  }
+  #healthFill { height: 100%; background: #22c55e; width: 100%; transition: width 0.2s; }
+  #endScreen {
+    position: absolute; inset: 0; background: rgba(0,0,0,0.85);
+    display: none; flex-direction: column; align-items: center; justify-content: center;
+    z-index: 200; color: white; text-align: center; padding: 20px;
+  }
+  #endScreen h1 { font-size: 48px; margin-bottom: 10px; }
+  #endScreen .stats { background: rgba(255,255,255,0.1); padding: 20px; border-radius: 12px; margin: 20px 0; min-width: 280px; }
+  #endScreen .stat { font-size: 18px; margin: 8px 0; }
+  #game { display: none; }
+  input { padding: 10px; font-size: 16px; border-radius: 8px; border: none; margin-bottom: 15px; width: 260px; }
+</style>
+</head>
+<body>
+<div id="menu">
+  <h1>TETA TACARO</h1>
+  <div class="subtitle">Battle Royale de Comédia - Online</div>
+  <input type="text" id="playerName" placeholder="Seu nome" value="Jogador">
+  <button class="menu-btn btn-online" onclick="joinOnline()">Entrar Online</button>
+</div>
+
+<div id="lobby">
+  <h1>Sala de Espera</h1>
+  <div class="subtitle">Aguardando jogadores...</div>
+  <div id="playerList"></div>
+  <div id="lobbyStatus">0/8 jogadores</div>
+  <button class="menu-btn btn-back" onclick="location.reload()">Sair</button>
+</div>
+
+<div id="game">
+  <div id="info">
+    <b>TETA TACARO</b><br>
+    <span id="controls-hint">WASD + E | Espaço = Atacar</span>
+  </div>
+  <div id="lootInfo">Pressione E / botão</div>
+  <div id="inventory">
+    <h3>INVENTÁRIO</h3>
+    <div id="invList">Vazio</div>
+  </div>
+  <div id="joystick-zone">
+    <div id="joystick-base"></div>
+    <div id="joystick-thumb"></div>
+  </div>
+  <div id="action-btn">E</div>
+  <div id="healthBar"><div id="healthFill"></div></div>
+</div>
+
+<div id="endScreen">
+  <h1 id="endTitle">FIM DE JOGO</h1>
+  <div class="subtitle" id="endSubtitle">Você foi eliminado</div>
+  <div class="stats">
+    <div class="stat">Alvos Inimigos: <b id="statEnemies">0</b></div>
+    <div class="stat">Funcionários: <b id="statEmployees">0</b></div>
+    <div class="stat">Clientes: <b id="statCustomers">0</b></div>
+  </div>
+  <button class="menu-btn btn-solo" onclick="location.reload()">Voltar ao Menu</button>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/controls/PointerLockControls.js"></script>
+<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+<script>
+// ============ CONFIGURAÇÃO ============
+// MUDE ESSA URL PARA O ENDEREÇO DO SEU RENDER
+const SERVER_URL = "https://teta-tacaro.onrender.com";
+
+const socket = io(SERVER_URL);
+const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth < 800;
+
+let scene, camera, renderer, controls;
+let colliders = [];
+let lootItems = [];
+let nearLoot = null;
+let otherPlayers = {};
+let myId = null;
+let playerHealth = 100;
+let gameOver = false;
+let stats = { enemies: 0, employees: 0, customers: 0 };
+
+const keys = { w: false, a: false, s: false, d: false };
+const velocity = new THREE.Vector3();
+const direction = new THREE.Vector3();
+let joystickActive = false;
+let joystickVector = { x: 0, y: 0 };
+const JOYSTICK_RADIUS = 50;
+
+const loader = new THREE.TextureLoader();
+const textures = {};
+
+function loadTextures() {
+  return Promise.all([
+    loader.loadAsync('floor.jpg').then(t => { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(20, 20); textures.floor = t; }),
+    loader.loadAsync('parking.jpg').then(t => { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(8, 4); textures.parking = t; }),
+    loader.loadAsync('shelf.jpg').then(t => { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(1, 4); textures.shelf = t; }),
+    loader.loadAsync('wall.jpg').then(t => { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(10, 2); textures.wall = t; })
+  ]);
+}
+
+function joinOnline() {
+  const name = document.getElementById('playerName').value || 'Jogador';
+  socket.emit('join', { name });
+}
+
+socket.on('joined', (data) => {
+  myId = data.id;
+  document.getElementById('menu').style.display = 'none';
+  document.getElementById('lobby').style.display = 'flex';
+  updateLobby(data.players);
+  startGame();
+});
+
+socket.on('updatePlayers', (players) => {
+  updateLobby(players);
+  players.forEach(p => {
+    if (p.id !== myId && !otherPlayers[p.id]) {
+      createOtherPlayer(p);
+    }
+  });
+});
+
+socket.on('playerMoved', (data) => {
+  if (otherPlayers[data.id]) {
+    otherPlayers[data.id].position.set(data.x, data.y, data.z);
+    otherPlayers[data.id].rotation.y = data.rotY || 0;
+  }
+});
+
+socket.on('playerLeft', (id) => {
+  if (otherPlayers[id]) {
+    scene.remove(otherPlayers[id]);
+    delete otherPlayers[id];
+  }
+});
+
+socket.on('playerDied', (data) => {
+  if (data.id === myId) endGame(false);
+  if (otherPlayers[data.id]) otherPlayers[data.id].visible = false;
+});
+
+function updateLobby(players) {
+  const list = document.getElementById('playerList');
+  list.innerHTML = '';
+  players.forEach(p => {
+    const div = document.createElement('div');
+    div.className = 'player';
+    div.textContent = p.name + (p.id === myId ? ' (Você)' : '');
+    list.appendChild(div);
+  });
+  document.getElementById('lobbyStatus').textContent = players.length + '/8 jogadores';
+}
+
+async function startGame() {
+  await loadTextures();
+
+  document.getElementById('lobby').style.display = 'none';
+  document.getElementById('game').style.display = 'block';
+  document.getElementById('info').style.display = 'block';
+  document.getElementById('inventory').style.display = 'block';
+  document.getElementById('healthBar').style.display = 'block';
+
+  if (isMobile) {
+    document.getElementById('joystick-zone').style.display = 'block';
+    document.getElementById('action-btn').style.display = 'flex';
+    document.getElementById('controls-hint').textContent = 'Joystick + botão';
+  }
+
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x87ceeb);
+  scene.fog = new THREE.Fog(0x87ceeb, 50, 140);
+
+  camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 300);
+  camera.position.set(0, 1.7, 32);
+
+  renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  document.getElementById('game').appendChild(renderer.domElement);
+
+  scene.add(new THREE.AmbientLight(0xffffff, 0.45));
+  const sun = new THREE.DirectionalLight(0xffffff, 0.85);
+  sun.position.set(40, 60, 25);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(2048, 2048);
+  scene.add(sun);
+
+  controls = new THREE.PointerLockControls(camera, document.body);
+  document.addEventListener('click', (e) => {
+    if (!isMobile && !e.target.closest('#inventory')) controls.lock();
+  });
+
+  if (isMobile) setupJoystick();
+
+  // Cenário básico (pode expandir depois)
+  createGround();
+  createWalls();
+  createNPCs();
+
+  window.addEventListener('resize', onWindowResize);
+  document.addEventListener('keydown', onKeyDown);
+  document.addEventListener('keyup', onKeyUp);
+
+  animate();
+}
+
+function createOtherPlayer(data) {
+  const group = new THREE.Group();
+  const body = new THREE.Mesh(
+    new THREE.BoxGeometry(0.5, 1.6, 0.4),
+    new THREE.MeshStandardMaterial({ color: 0x3b82f6 })
+  );
+  body.position.y = 0.8;
+  group.add(body);
+  const head = new THREE.Mesh(
+    new THREE.SphereGeometry(0.2, 8, 8),
+    new THREE.MeshStandardMaterial({ color: 0xf5d0a9 })
+  );
+  head.position.y = 1.7;
+  group.add(head);
+  group.position.set(data.x, 0, data.z);
+  scene.add(group);
+  otherPlayers[data.id] = group;
+}
+
+function createGround() {
+  const floorMat = new THREE.MeshStandardMaterial({ map: textures.floor || null, color: 0x4a5568, roughness: 0.85 });
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(80, 80), floorMat);
+  ground.rotation.x = -Math.PI / 2;
+  ground.receiveShadow = true;
+  scene.add(ground);
+}
+
+function createWalls() {
+  const wallMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0 });
+  const h = 4.8;
+  addBox(80, h, 0.5, 0, h/2, -40, wallMat);
+  addBox(0.5, h, 50, -40, h/2, -15, wallMat);
+  addBox(0.5, h, 50, 40, h/2, -15, wallMat);
+}
+
+function createNPCs() {
+  const shirtMat = new THREE.MeshStandardMaterial({ color: 0xdc2626 });
+  for (let i = 0; i < 10; i++) {
+    const npc = new THREE.Mesh(new THREE.BoxGeometry(0.5, 1.6, 0.4), shirtMat);
+    npc.position.set((Math.random()-0.5)*40, 0.8, (Math.random()-0.5)*30);
+    npc.userData = { type: i < 5 ? 'employee' : 'customer', health: 50 };
+    scene.add(npc);
+  }
+}
+
+function addBox(w, h, d, x, y, z, mat) {
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+  mesh.position.set(x, y, z);
+  mesh.castShadow = mesh.receiveShadow = true;
+  scene.add(mesh);
+  colliders.push(mesh);
+}
+
+function setupJoystick() {
+  const zone = document.getElementById('joystick-zone');
+  const thumb = document.getElementById('joystick-thumb');
+  function getPos(e) {
+    const rect = zone.getBoundingClientRect();
+    const touch = e.touches ? e.touches[0] : e;
+    return { x: touch.clientX - rect.left - rect.width / 2, y: touch.clientY - rect.top - rect.height / 2 };
+  }
+  function updateJoystick(e) {
+    e.preventDefault();
+    const pos = getPos(e);
+    const dist = Math.min(Math.hypot(pos.x, pos.y), JOYSTICK_RADIUS);
+    const angle = Math.atan2(pos.y, pos.x);
+    const x = Math.cos(angle) * dist;
+    const y = Math.sin(angle) * dist;
+    thumb.style.transform = `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))`;
+    joystickVector.x = x / JOYSTICK_RADIUS;
+    joystickVector.y = y / JOYSTICK_RADIUS;
+  }
+  zone.addEventListener('touchstart', e => { joystickActive = true; updateJoystick(e); });
+  zone.addEventListener('touchmove', e => { if (joystickActive) updateJoystick(e); });
+  zone.addEventListener('touchend', () => {
+    joystickActive = false;
+    joystickVector.x = 0; joystickVector.y = 0;
+    thumb.style.transform = 'translate(-50%, -50%)';
+  });
+}
+
+function onKeyDown(e) {
+  switch (e.code) {
+    case 'KeyW': keys.w = true; break;
+    case 'KeyA': keys.a = true; break;
+    case 'KeyS': keys.s = true; break;
+    case 'KeyD': keys.d = true; break;
+    case 'Space': attack(); break;
+  }
+}
+function onKeyUp(e) {
+  switch (e.code) {
+    case 'KeyW': keys.w = false; break;
+    case 'KeyA': keys.a = false; break;
+    case 'KeyS': keys.s = false; break;
+    case 'KeyD': keys.d = false; break;
+  }
+}
+
+function attack() {
+  if (gameOver) return;
+  socket.emit('attack', {});
+  // Dano local simples para teste
+  if (Math.random() > 0.7) takeDamage(10);
+}
+
+function takeDamage(amount) {
+  playerHealth = Math.max(0, playerHealth - amount);
+  document.getElementById('healthFill').style.width = playerHealth + '%';
+  if (playerHealth <= 0) {
+    socket.emit('damage', { target: myId, amount: 100 });
+    endGame(false);
+  }
+}
+
+function endGame(won) {
+  if (gameOver) return;
+  gameOver = true;
+  document.getElementById('endTitle').textContent = won ? 'VITÓRIA!' : 'ELIMINADO';
+  document.getElementById('endSubtitle').textContent = won ? 'Você venceu!' : 'Você foi eliminado';
+  document.getElementById('statEnemies').textContent = stats.enemies;
+  document.getElementById('statEmployees').textContent = stats.employees;
+  document.getElementById('statCustomers').textContent = stats.customers;
+  document.getElementById('endScreen').style.display = 'flex';
+  if (controls) controls.unlock();
+}
+
+function onWindowResize() {
+  if (!camera) return;
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+}
+
+function animate() {
+  requestAnimationFrame(animate);
+  if (!scene || gameOver) return;
+
+  const delta = 0.016;
+  velocity.x -= velocity.x * 8.0 * delta;
+  velocity.z -= velocity.z * 8.0 * delta;
+
+  let moveZ = Number(keys.w) - Number(keys.s);
+  let moveX = Number(keys.d) - Number(keys.a);
+
+  if (isMobile && (Math.abs(joystickVector.x) > 0.05 || Math.abs(joystickVector.y) > 0.05)) {
+    moveX += joystickVector.x;
+    moveZ += -joystickVector.y;
+  }
+
+  direction.set(moveX, 0, moveZ);
+  if (direction.length() > 0) direction.normalize();
+
+  if (direction.lengthSq() > 0) {
+    velocity.z -= direction.z * 32.0 * delta;
+    velocity.x -= direction.x * 32.0 * delta;
+  }
+
+  const nextPos = camera.position.clone();
+  nextPos.x -= velocity.x * delta;
+  nextPos.z -= velocity.z * delta;
+
+  controls.moveRight(-velocity.x * delta);
+  controls.moveForward(-velocity.z * delta);
+
+  // Envia posição pro servidor
+  if (myId) {
+    socket.emit('move', {
+      x: camera.position.x,
+      y: camera.position.y,
+      z: camera.position.z,
+      rotY: camera.rotation.y
+    });
+  }
+
+  renderer.render(scene, camera);
+}
+</script>
+</body>
+</html>
