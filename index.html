@@ -5,65 +5,34 @@
 <title>Teta Tacaro</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <style>
-  * { box-sizing: border-box; }
-  body { margin: 0; overflow: hidden; background: #0f172a; font-family: Arial, sans-serif; touch-action: none; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body { margin: 0; overflow: hidden; background: #0f172a; font-family: Arial, sans-serif; touch-action: none; user-select: none; }
   #menu, #lobby, #roomMenu {
-    position: absolute; inset: 0; display: flex; flex-direction: column;
-    align-items: center; justify-content: center; background: linear-gradient(135deg, #0f172a, #1e293b);
-    z-index: 100; color: white;
+    position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    background: radial-gradient(circle at 50% 30%, #334155, #0f172a 70%); z-index: 100; color: #fff;
   }
   #lobby, #roomMenu { display: none; }
-  h1 { font-size: 42px; margin-bottom: 10px; text-align: center; }
+  h1 { font-size: 42px; margin: 0 0 10px; text-align: center; letter-spacing: 2px; }
   .subtitle { color: #94a3b8; margin-bottom: 30px; text-align: center; }
-  button.menu-btn {
-    width: 280px; padding: 16px; margin: 8px; font-size: 18px; font-weight: bold;
-    border: none; border-radius: 12px; cursor: pointer; transition: 0.2s;
-  }
-  .btn-solo { background: #22c55e; color: white; }
-  .btn-online { background: #3b82f6; color: white; }
-  .btn-back { background: #64748b; color: white; margin-top: 15px; }
+  button.menu-btn { width: 280px; padding: 16px; margin: 8px; font-size: 18px; font-weight: bold; border: none; border-radius: 12px; cursor: pointer; color: #fff; }
+  button.menu-btn:active { transform: scale(.97); }
+  .btn-solo { background: #22c55e; } .btn-online { background: #3b82f6; } .btn-back { background: #64748b; margin-top: 15px; }
   input { padding: 12px; font-size: 16px; border-radius: 8px; border: none; margin: 8px; width: 260px; }
-  #playerList { background: rgba(0,0,0,0.4); padding: 20px; border-radius: 12px; min-width: 280px; margin: 15px 0; }
-  .player { padding: 8px; margin: 4px 0; background: rgba(255,255,255,0.1); border-radius: 6px; }
-  #info {
-    position: absolute; top: 10px; left: 10px; color: #fff;
-    background: rgba(0,0,0,0.75); padding: 10px; border-radius: 8px; font-size: 12px;
-    max-width: 240px; line-height: 1.4; z-index: 20; pointer-events: none; display: none;
-  }
-  #healthBar {
-    position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
-    width: 200px; height: 20px; background: #333; border: 2px solid #fff; border-radius: 4px;
-    z-index: 20; display: none;
-  }
-  #healthFill { height: 100%; background: #22c55e; width: 100%; transition: width 0.2s; }
-  #endScreen {
-    position: absolute; inset: 0; background: rgba(0,0,0,0.85);
-    display: none; flex-direction: column; align-items: center; justify-content: center;
-    z-index: 200; color: white; text-align: center; padding: 20px;
-  }
-  #endScreen h1 { font-size: 48px; margin-bottom: 10px; }
-  #endScreen .stats { background: rgba(255,255,255,0.1); padding: 20px; border-radius: 12px; margin: 20px 0; min-width: 280px; }
-  #endScreen .stat { font-size: 18px; margin: 8px 0; }
-  #game { 
-    display: none; 
-    position: absolute; 
-    inset: 0; 
-    z-index: 1;
-  }
-  #game canvas {
-    display: block;
-    width: 100%;
-    height: 100%;
-  }
-  #joystick-zone {
-    position: absolute; bottom: 30px; left: 30px; width: 140px; height: 140px;
-    background: rgba(255,255,255,0.08); border: 2px solid rgba(255,255,255,0.25);
-    border-radius: 50%; z-index: 30; display: none;
-  }
-  #joystick-thumb {
-    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-    width: 40px; height: 40px; background: rgba(255,255,255,0.45); border-radius: 50%;
-  }
+  #playerList { background: rgba(0,0,0,.4); padding: 20px; border-radius: 12px; min-width: 280px; margin: 15px 0; }
+  .player { padding: 8px; margin: 4px 0; background: rgba(255,255,255,.1); border-radius: 6px; }
+  #game { display: none; position: absolute; inset: 0; z-index: 1; }
+  #game canvas { display: block; width: 100%; height: 100%; }
+  #info { position: absolute; top: 10px; left: 10px; color: #fff; background: rgba(0,0,0,.6); padding: 10px; border-radius: 8px; font-size: 12px; line-height: 1.4; z-index: 20; pointer-events: none; }
+  #crosshair { position: absolute; top: 50%; left: 50%; width: 8px; height: 8px; margin: -4px; border: 2px solid rgba(255,255,255,.8); border-radius: 50%; z-index: 20; pointer-events: none; }
+  #healthBar { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); width: 220px; height: 18px; background: rgba(0,0,0,.6); border: 2px solid #fff; border-radius: 9px; overflow: hidden; z-index: 20; }
+  #healthFill { height: 100%; background: linear-gradient(#4ade80, #16a34a); width: 100%; transition: width .2s; }
+  #hurt { position: absolute; inset: 0; background: radial-gradient(transparent 40%, rgba(220,38,38,.55)); opacity: 0; transition: opacity .25s; pointer-events: none; z-index: 15; }
+  #joystick-zone { position: absolute; bottom: 40px; left: 30px; width: 130px; height: 130px; background: rgba(255,255,255,.08); border: 2px solid rgba(255,255,255,.3); border-radius: 50%; z-index: 30; display: none; touch-action: none; }
+  #joystick-thumb { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 46px; height: 46px; background: rgba(255,255,255,.5); border-radius: 50%; }
+  #atkBtn { position: absolute; bottom: 50px; right: 30px; width: 90px; height: 90px; border-radius: 50%; border: 3px solid #fff; background: rgba(239,68,68,.75); color: #fff; font-weight: bold; z-index: 30; display: none; }
+  #endScreen { position: absolute; inset: 0; background: rgba(0,0,0,.85); display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 200; color: #fff; text-align: center; padding: 20px; }
+  #endScreen .stats { background: rgba(255,255,255,.1); padding: 20px; border-radius: 12px; margin: 20px 0; min-width: 280px; font-size: 18px; }
+  #err { display: none; position: absolute; bottom: 0; left: 0; right: 0; background: #7f1d1d; color: #fff; padding: 8px; font-size: 12px; z-index: 999; }
 </style>
 </head>
 <body>
@@ -93,372 +62,333 @@
 </div>
 
 <div id="game">
-  <div id="info"><b>TETA TACARO</b><br><span id="controls-hint">WASD | Espaço = Atacar</span></div>
+  <div id="info"><b>TETA TACARO</b><br><span id="hint">WASD mover · Espaço/clique atacar</span></div>
+  <div id="crosshair"></div>
   <div id="healthBar"><div id="healthFill"></div></div>
+  <div id="hurt"></div>
   <div id="joystick-zone"><div id="joystick-thumb"></div></div>
+  <button id="atkBtn">ATACAR</button>
 </div>
 
 <div id="endScreen">
   <h1 id="endTitle">FIM DE JOGO</h1>
   <div class="subtitle" id="endSubtitle"></div>
-  <div class="stats">
-    <div class="stat">Alvos Inimigos: <b id="statEnemies">0</b></div>
-    <div class="stat">Funcionários: <b id="statEmployees">0</b></div>
-    <div class="stat">Clientes: <b id="statCustomers">0</b></div>
-  </div>
+  <div class="stats">Inimigos derrotados: <b id="statEnemies">0</b></div>
   <button class="menu-btn btn-solo" onclick="location.reload()">Voltar ao Menu</button>
 </div>
+<div id="err"></div>
 
-<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/controls/PointerLockControls.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 <script>
+const $ = id => document.getElementById(id);
+window.addEventListener('error', e => { const b = $('err'); b.style.display = 'block'; b.textContent = 'Erro: ' + e.message; });
+
 const SERVER_URL = "https://teta-tacaro.onrender.com";
-const socket = io(SERVER_URL);
-const isMobile = window.innerWidth < 800;
+const isTouch = navigator.maxTouchPoints > 0 || 'ontouchstart' in window;
+const W = 60, D = 70, H = 5;           // tamanho do mercado
+let socket = null, myId = null, currentRoom = null, lobbyPlayers = [];
+let scene, camera, renderer, clock, started = false;
+let colliders = [], ais = [], others = {};
+let isSolo = false, gameOver = false, health = 100, kills = 0, lastAtk = 0, lastSend = 0;
+let yaw = 0, pitch = 0, bob = 0;
+const keys = {}, jv = { x: 0, y: 0 };
 
-const loader = new THREE.TextureLoader();
-const textures = {};
-
-function loadTextures() {
-  return Promise.all([
-    loader.loadAsync('floor.jpg').then(t => { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(15, 15); textures.floor = t; }).catch(() => {}),
-    loader.loadAsync('shelf.jpg').then(t => { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(1, 3); textures.shelf = t; }).catch(() => {}),
-    loader.loadAsync('wall.jpg').then(t => { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(8, 2); textures.wall = t; }).catch(() => {})
-  ]);
+/* ---------- MENUS / ONLINE ---------- */
+function showOnlineMenu() { $('menu').style.display = 'none'; $('roomMenu').style.display = 'flex'; getSocket(); }
+function backToMain() { $('roomMenu').style.display = 'none'; $('menu').style.display = 'flex'; }
+function getSocket() {
+  if (socket) return socket;
+  if (typeof io === 'undefined') { alert('Servidor online indisponível no momento.'); return null; }
+  socket = io(SERVER_URL);
+  bindSocket(socket);
+  return socket;
 }
-
-let scene, camera, renderer, controls;
-let colliders = [];
-let otherPlayers = {};
-let aiPlayers = [];
-let myId = null;
-let currentRoom = null;
-let isSolo = false;
-let playerHealth = 100;
-let gameOver = false;
-let stats = { enemies: 0, employees: 0, customers: 0 };
-
-const keys = { w: false, a: false, s: false, d: false };
-const velocity = new THREE.Vector3();
-const direction = new THREE.Vector3();
-
-function showOnlineMenu() {
-  document.getElementById('menu').style.display = 'none';
-  document.getElementById('roomMenu').style.display = 'flex';
+function roomInfo() {
+  const name = $('playerName').value || 'Jogador', room = $('roomName').value.trim();
+  if (!room) { alert('Digite o nome da sala'); return null; }
+  currentRoom = room; return { name, room };
 }
-function backToMain() {
-  document.getElementById('roomMenu').style.display = 'none';
-  document.getElementById('menu').style.display = 'flex';
-}
+function createRoom() { const i = roomInfo(), s = getSocket(); if (i && s) s.emit('createRoom', i); }
+function joinRoom() { const i = roomInfo(), s = getSocket(); if (i && s) s.emit('joinRoom', i); }
+function startOnlineGame() { if (socket) socket.emit('startGame', { room: currentRoom }); }
+function startSolo() { startGame(true); }
 
-function createRoom() {
-  const name = document.getElementById('playerName').value || 'Jogador';
-  const room = document.getElementById('roomName').value.trim();
-  if (!room) return alert('Digite o nome da sala');
-  currentRoom = room;
-  socket.emit('createRoom', { name, room });
-}
-
-function joinRoom() {
-  const name = document.getElementById('playerName').value || 'Jogador';
-  const room = document.getElementById('roomName').value.trim();
-  if (!room) return alert('Digite o nome da sala');
-  currentRoom = room;
-  socket.emit('joinRoom', { name, room });
-}
-
-socket.on('joined', (data) => {
-  myId = data.id;
-  currentRoom = data.room;
-  document.getElementById('roomMenu').style.display = 'none';
-  document.getElementById('lobby').style.display = 'flex';
-  document.getElementById('currentRoom').textContent = currentRoom;
-  updateLobby(data.players);
-});
-
-socket.on('updatePlayers', (players) => {
-  updateLobby(players);
-  players.forEach(p => {
-    if (p.id !== myId && !otherPlayers[p.id] && scene) createOtherPlayer(p);
+function bindSocket(s) {
+  s.on('joined', d => {
+    myId = d.id; currentRoom = d.room;
+    $('roomMenu').style.display = 'none'; $('lobby').style.display = 'flex';
+    $('currentRoom').textContent = currentRoom; updateLobby(d.players);
   });
-});
-
-socket.on('playerMoved', (data) => {
-  if (otherPlayers[data.id]) {
-    otherPlayers[data.id].position.set(data.x, data.y, data.z);
-    otherPlayers[data.id].rotation.y = data.rotY || 0;
-  }
-});
-
-socket.on('playerLeft', (id) => {
-  if (otherPlayers[id]) {
-    scene.remove(otherPlayers[id]);
-    delete otherPlayers[id];
-  }
-});
-
-socket.on('gameStart', () => startGame(false));
-socket.on('playerDied', (data) => {
-  if (data.id === myId) endGame(false);
-  if (otherPlayers[data.id]) otherPlayers[data.id].visible = false;
-});
-socket.on('error', (msg) => alert(msg));
-
+  s.on('updatePlayers', p => { updateLobby(p); if (scene) p.forEach(addOther); });
+  s.on('playerMoved', d => {
+    const o = others[d.id]; if (!o) return;
+    o.position.set(d.x, 0, d.z); o.rotation.y = d.rotY || 0;
+  });
+  s.on('playerLeft', id => { if (others[id]) { scene.remove(others[id]); delete others[id]; } });
+  s.on('gameStart', () => startGame(false));
+  s.on('playerDied', d => { if (d.id === myId) endGame(false); if (others[d.id]) others[d.id].visible = false; });
+  s.on('error', m => alert(m));
+}
 function updateLobby(players) {
-  const list = document.getElementById('playerList');
-  list.innerHTML = '';
+  lobbyPlayers = players;
+  $('playerList').innerHTML = '';
   players.forEach(p => {
-    const div = document.createElement('div');
-    div.className = 'player';
-    div.textContent = p.name + (p.id === myId ? ' (Você)' : '');
-    list.appendChild(div);
+    const d = document.createElement('div'); d.className = 'player';
+    d.textContent = p.name + (p.id === myId ? ' (Você)' : ''); $('playerList').appendChild(d);
   });
-  document.getElementById('lobbyStatus').textContent = players.length + ' jogador(es)';
+  $('lobbyStatus').textContent = players.length + ' jogador(es)';
+}
+function addOther(p) {
+  if (p.id === myId || others[p.id]) return;
+  const c = makeChar(0x3b82f6); c.position.set(p.x || 0, 0, p.z || 0); scene.add(c); others[p.id] = c;
 }
 
-function startOnlineGame() {
-  socket.emit('startGame', { room: currentRoom });
+/* ---------- TEXTURAS PROCEDURAIS ---------- */
+function canvasTex(w, h, draw, rx, ry) {
+  const c = document.createElement('canvas'); c.width = w; c.height = h; draw(c.getContext('2d'), w, h);
+  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(rx, ry); t.anisotropy = 4; return t;
+}
+const floorTex = () => canvasTex(128, 128, (g, w, h) => {
+  g.fillStyle = '#ece8de'; g.fillRect(0, 0, w, h);
+  g.fillStyle = '#e0dbcd'; g.fillRect(0, 0, w / 2, h / 2); g.fillRect(w / 2, h / 2, w / 2, h / 2);
+  g.strokeStyle = '#bdb7a6'; g.lineWidth = 3; g.strokeRect(0, 0, w, h);
+}, W / 2, D / 2);
+const signTex = () => canvasTex(512, 128, (g, w, h) => {
+  g.fillStyle = '#dc2626'; g.fillRect(0, 0, w, h);
+  g.fillStyle = '#fff'; g.font = 'bold 72px Arial'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText('TETA TACARO', w / 2, h / 2 + 4);
+}, 1, 1);
+
+/* ---------- MAPA ---------- */
+function std(color, o = {}) { return new THREE.MeshStandardMaterial(Object.assign({ color, roughness: .7 }, o)); }
+function box(w, h, d, mat, x, y, z, collide = true, shadow = true) {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+  m.position.set(x, y, z); m.castShadow = shadow; m.receiveShadow = true; scene.add(m);
+  if (collide) colliders.push({ x1: x - w / 2, x2: x + w / 2, z1: z - d / 2, z2: z + d / 2 });
+  return m;
+}
+function buildMap() {
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(W, D), std(0xffffff, { map: floorTex(), roughness: .35 }));
+  floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; scene.add(floor);
+
+  const ceil = new THREE.Mesh(new THREE.PlaneGeometry(W, D), std(0xf5f5f5));
+  ceil.rotation.x = Math.PI / 2; ceil.position.y = H; scene.add(ceil);
+  const lamp = new THREE.MeshBasicMaterial({ color: 0xffffff });
+  [-20, -7, 7, 20].forEach(x => [-24, -8, 8, 24].forEach(z => box(3, .06, 1.2, lamp, x, H - .04, z, false, false)));
+
+  const wallM = std(0xf1ebdd), stripe = std(0xdc2626);
+  [[W, -D / 2, 0], [W, D / 2, 0]].forEach(([w, z]) => {
+    box(w, H, .5, wallM, 0, H / 2, z); box(w, .5, .52, stripe, 0, 1, z, false, false);
+  });
+  [-W / 2, W / 2].forEach(x => { box(.5, H, D, wallM, x, H / 2, 0); box(.52, .5, D, stripe, x, 1, 0, false, false); });
+
+  const sign = new THREE.Mesh(new THREE.PlaneGeometry(10, 2.5), new THREE.MeshBasicMaterial({ map: signTex() }));
+  sign.position.set(0, 3.6, -D / 2 + .3); scene.add(sign);
+
+  // geladeiras no fundo
+  box(40, 2.3, 1, std(0xdbeafe, { metalness: .3, roughness: .2 }), 0, 1.15, -D / 2 + 1);
+  box(40, .15, 1.05, std(0x1e293b), 0, 2.35, -D / 2 + 1, false);
+
+  // gôndolas com produtos
+  const metal = std(0x64748b, { metalness: .4 }), board = std(0xe2e8f0), cap = std(0xdc2626);
+  const prods = [], colors = [0xef4444, 0xf59e0b, 0x22c55e, 0x3b82f6, 0xa855f7, 0xfacc15, 0xf97316, 0x14b8a6];
+  [-20, -10, 0, 10, 20].forEach(x => {
+    const z0 = -8;
+    box(1.7, .25, 16, metal, x, .125, z0, false);
+    box(.2, 2.2, 16, metal, x, 1.1, z0, false);
+    box(1.7, .15, 16, cap, x, 2.3, z0, false);
+    colliders.push({ x1: x - .85, x2: x + .85, z1: z0 - 8, z2: z0 + 8 });
+    [-1, 1].forEach(side => [.55, 1.0, 1.45, 1.9].forEach(y => {
+      box(.7, .05, 16, board, x + side * .45, y, z0, false, false);
+      for (let z = z0 - 7.6; z <= z0 + 7.6; z += .55) prods.push([x + side * (.4 + Math.random() * .08), y + .2, z, .8 + Math.random() * .6]);
+    }));
+  });
+  const im = new THREE.InstancedMesh(new THREE.BoxGeometry(.3, .32, .3), std(0xffffff), prods.length);
+  const d = new THREE.Object3D(), col = new THREE.Color();
+  prods.forEach((p, i) => {
+    d.position.set(p[0], p[1], p[2]); d.scale.set(1, p[3], 1); d.updateMatrix();
+    im.setMatrixAt(i, d.matrix); im.setColorAt(i, col.setHex(colors[(Math.random() * colors.length) | 0]));
+  });
+  im.castShadow = true; scene.add(im);
+
+  // caixas
+  const dark = std(0x334155), white = std(0xf8fafc);
+  [-18, -6, 6, 18].forEach(x => {
+    box(2.4, 1, 1, dark, x, .5, 14); box(2.5, .08, 1.1, white, x, 1.04, 14, false);
+    box(2.4, .1, .7, std(0x0f172a), x, 1.12, 13.3, false);
+    box(.45, .35, .3, std(0x22c55e), x + .8, 1.3, 14.2, false);
+  });
 }
 
-function startSolo() {
-  isSolo = true;
-  document.getElementById('menu').style.display = 'none';
-  startGame(true);
+/* ---------- PERSONAGENS ---------- */
+function makeChar(shirt, pants = 0x2d3748, hair = 0x3b2417) {
+  const g = new THREE.Group(), M = c => std(c);
+  const add = (geo, mat, x, y, z, p = g) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.castShadow = true; p.add(m); return m; };
+  const limb = (w, h, c, x, y) => { const p = new THREE.Group(); p.position.set(x, y, 0); add(new THREE.BoxGeometry(w, h, w), M(c), 0, -h / 2, 0, p); g.add(p); return p; };
+  add(new THREE.BoxGeometry(.52, .62, .3), M(shirt), 0, 1.2, 0);
+  add(new THREE.SphereGeometry(.18, 16, 12), M(0xf1c9a5), 0, 1.68, 0);
+  add(new THREE.SphereGeometry(.19, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), M(hair), 0, 1.7, 0);
+  [-.07, .07].forEach(x => add(new THREE.SphereGeometry(.025, 6, 6), M(0x111111), x, 1.7, -.17));
+  g.userData.arms = [limb(.14, .58, shirt, -.35, 1.48), limb(.14, .58, shirt, .35, 1.48)];
+  g.userData.legs = [limb(.2, .9, pants, -.13, .9), limb(.2, .9, pants, .13, .9)];
+  return g;
+}
+function walkAnim(g, amount, t) {
+  const s = Math.sin(t * 10) * .7 * amount, u = g.userData;
+  u.arms[0].rotation.x = s; u.arms[1].rotation.x = -s; u.legs[0].rotation.x = -s; u.legs[1].rotation.x = s;
 }
 
-async function startGame(solo) {
-  isSolo = solo;
-  document.getElementById('lobby').style.display = 'none';
-  document.getElementById('menu').style.display = 'none';
-  document.getElementById('roomMenu').style.display = 'none';
-  document.getElementById('game').style.display = 'block';
-  document.getElementById('info').style.display = 'block';
-  document.getElementById('healthBar').style.display = 'block';
-  if (isMobile) document.getElementById('joystick-zone').style.display = 'block';
-
-  await loadTextures();
+/* ---------- JOGO ---------- */
+function startGame(solo) {
+  if (started) return;
+  if (typeof THREE === 'undefined') { alert('Não foi possível carregar o motor 3D (three.js). Verifique a internet.'); return; }
+  started = true; isSolo = solo;
+  ['menu', 'lobby', 'roomMenu'].forEach(i => $(i).style.display = 'none');
+  $('game').style.display = 'block';
+  if (isTouch) { $('joystick-zone').style.display = 'block'; $('atkBtn').style.display = 'block'; $('hint').textContent = 'Joystick move · arraste a tela para olhar'; }
 
   scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x87ceeb);
-  scene.fog = new THREE.Fog(0x87ceeb, 40, 120);
-
-  camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 300);
-  camera.position.set(0, 1.7, 25);
+  scene.background = new THREE.Color(0x1e293b);
+  camera = new THREE.PerspectiveCamera(75, innerWidth / innerHeight, .1, 150);
+  camera.position.set(0, 1.7, 24); camera.rotation.order = 'YXZ';
 
   renderer = new THREE.WebGLRenderer({ antialias: true });
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.setPixelRatio(window.devicePixelRatio);
-  renderer.shadowMap.enabled = true;
-  document.getElementById('game').appendChild(renderer.domElement);
+  renderer.setSize(innerWidth, innerHeight);
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  $('game').appendChild(renderer.domElement);
 
-  scene.add(new THREE.AmbientLight(0xffffff, 0.6));
-  const sun = new THREE.DirectionalLight(0xffffff, 0.9);
-  sun.position.set(30, 50, 20);
-  sun.castShadow = true;
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x9a9484, .75));
+  const sun = new THREE.DirectionalLight(0xffffff, .55);
+  sun.position.set(12, 20, 10); sun.castShadow = true;
+  sun.shadow.mapSize.set(isTouch ? 1024 : 2048, isTouch ? 1024 : 2048);
+  Object.assign(sun.shadow.camera, { left: -40, right: 40, top: 40, bottom: -40, near: 1, far: 60 });
   scene.add(sun);
 
-  controls = new THREE.PointerLockControls(camera, document.body);
-  document.addEventListener('click', (e) => { 
-    if (!isMobile && !e.target.closest('#endScreen')) controls.lock(); 
+  buildMap();
+  if (solo) spawnAI(); else lobbyPlayers.forEach(addOther);
+  bindInput(renderer.domElement);
+  addEventListener('resize', () => {
+    camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight);
   });
-
-  createSimpleMap();
-  if (solo) spawnAI();
-
-  window.addEventListener('resize', onWindowResize);
-  document.addEventListener('keydown', onKeyDown);
-  document.addEventListener('keyup', onKeyUp);
-  animate();
-}
-
-function createSimpleMap() {
-  // Chão com textura
-  const floorMat = new THREE.MeshStandardMaterial({ 
-    map: textures.floor || null, 
-    color: textures.floor ? 0xffffff : 0x4a5568, 
-    roughness: 0.85 
-  });
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(100, 100), floorMat);
-  ground.rotation.x = -Math.PI / 2;
-  ground.receiveShadow = true;
-  scene.add(ground);
-
-  // Prateleiras com textura de metal
-  const shelfMat = new THREE.MeshStandardMaterial({ 
-    map: textures.shelf || null, 
-    color: textures.shelf ? 0xffffff : 0x718096,
-    metalness: 0.3,
-    roughness: 0.6
-  });
-  for (let i = -25; i <= 25; i += 8) {
-    const shelf = new THREE.Mesh(new THREE.BoxGeometry(1.5, 2.4, 18), shelfMat);
-    shelf.position.set(i, 1.2, -8);
-    shelf.castShadow = true;
-    shelf.receiveShadow = true;
-    scene.add(shelf);
-    colliders.push(shelf);
-  }
-
-  // Parede com textura
-  const wallMat = new THREE.MeshStandardMaterial({ 
-    map: textures.wall || null, 
-    color: textures.wall ? 0xffffff : 0xe2e8f0 
-  });
-  const wall = new THREE.Mesh(new THREE.BoxGeometry(60, 4, 0.5), wallMat);
-  wall.position.set(0, 2, -30);
-  scene.add(wall);
+  clock = new THREE.Clock(); animate();
 }
 
 function spawnAI() {
-  const colors = [0xef4444, 0x3b82f6];
-  for (let i = 0; i < 2; i++) {
-    const ai = new THREE.Group();
-    const body = new THREE.Mesh(
-      new THREE.BoxGeometry(0.5, 1.6, 0.4),
-      new THREE.MeshStandardMaterial({ color: colors[i] })
-    );
-    body.position.y = 0.8;
-    ai.add(body);
-    const head = new THREE.Mesh(
-      new THREE.SphereGeometry(0.2, 8, 8),
-      new THREE.MeshStandardMaterial({ color: 0xf5d0a9 })
-    );
-    head.position.y = 1.7;
-    ai.add(head);
-    ai.position.set((i === 0 ? -15 : 15), 0, -10);
-    ai.userData = { type: 'ai', health: 80, speed: 0.04, target: null };
-    scene.add(ai);
-    aiPlayers.push(ai);
-  }
+  [[0xef4444, -15, -22], [0xf59e0b, 15, -22], [0xa855f7, 0, -28]].forEach(([c, x, z]) => {
+    const a = makeChar(c); a.position.set(x, 0, z); a.userData.hp = 80; a.userData.cd = 0;
+    scene.add(a); ais.push(a);
+  });
 }
 
-function createOtherPlayer(data) {
-  const group = new THREE.Group();
-  const body = new THREE.Mesh(
-    new THREE.BoxGeometry(0.5, 1.6, 0.4),
-    new THREE.MeshStandardMaterial({ color: 0x3b82f6 })
-  );
-  body.position.y = 0.8;
-  group.add(body);
-  const head = new THREE.Mesh(
-    new THREE.SphereGeometry(0.2, 8, 8),
-    new THREE.MeshStandardMaterial({ color: 0xf5d0a9 })
-  );
-  head.position.y = 1.7;
-  group.add(head);
-  group.position.set(data.x || 0, 0, data.z || 0);
-  scene.add(group);
-  otherPlayers[data.id] = group;
+function hit(x, z, r) {
+  if (Math.abs(x) > W / 2 - r - .3 || Math.abs(z) > D / 2 - r - .3) return true;
+  return colliders.some(c => x > c.x1 - r && x < c.x2 + r && z > c.z1 - r && z < c.z2 + r);
+}
+function move(p, dx, dz, r = .4) {
+  if (!hit(p.x + dx, p.z, r)) p.x += dx;
+  if (!hit(p.x, p.z + dz, r)) p.z += dz;
 }
 
-function onKeyDown(e) {
-  switch (e.code) {
-    case 'KeyW': keys.w = true; break;
-    case 'KeyA': keys.a = true; break;
-    case 'KeyS': keys.s = true; break;
-    case 'KeyD': keys.d = true; break;
-    case 'Space': attack(); break;
+function bindInput(cv) {
+  addEventListener('keydown', e => { keys[e.code] = true; if (e.code === 'Space') { attack(); e.preventDefault(); } });
+  addEventListener('keyup', e => keys[e.code] = false);
+  if (!isTouch) {
+    cv.addEventListener('click', () => { if (!document.pointerLockElement) cv.requestPointerLock(); });
+    cv.addEventListener('mousedown', () => { if (document.pointerLockElement) attack(); });
+    addEventListener('mousemove', e => {
+      if (document.pointerLockElement !== cv) return;
+      yaw -= e.movementX * .0022; pitch = Math.max(-1.3, Math.min(1.3, pitch - e.movementY * .0022));
+    });
+    return;
   }
-}
-function onKeyUp(e) {
-  switch (e.code) {
-    case 'KeyW': keys.w = false; break;
-    case 'KeyA': keys.a = false; break;
-    case 'KeyS': keys.s = false; break;
-    case 'KeyD': keys.d = false; break;
-  }
+  const jz = $('joystick-zone'), th = $('joystick-thumb');
+  let joyId = null, lookId = null, lx = 0, ly = 0;
+  const joy = t => {
+    const r = jz.getBoundingClientRect();
+    let dx = (t.clientX - r.left - r.width / 2) / 50, dy = (t.clientY - r.top - r.height / 2) / 50, l = Math.hypot(dx, dy);
+    if (l > 1) { dx /= l; dy /= l; }
+    jv.x = dx; jv.y = dy; th.style.transform = `translate(calc(-50% + ${dx * 40}px), calc(-50% + ${dy * 40}px))`;
+  };
+  jz.addEventListener('touchstart', e => { joyId = e.changedTouches[0].identifier; joy(e.changedTouches[0]); e.preventDefault(); }, { passive: false });
+  cv.addEventListener('touchstart', e => { const t = e.changedTouches[0]; lookId = t.identifier; lx = t.clientX; ly = t.clientY; }, { passive: true });
+  addEventListener('touchmove', e => {
+    for (const t of e.changedTouches) {
+      if (t.identifier === joyId) joy(t);
+      else if (t.identifier === lookId) {
+        yaw -= (t.clientX - lx) * .005; pitch = Math.max(-1.3, Math.min(1.3, pitch - (t.clientY - ly) * .005)); lx = t.clientX; ly = t.clientY;
+      }
+    }
+  }, { passive: true });
+  addEventListener('touchend', e => {
+    for (const t of e.changedTouches) {
+      if (t.identifier === joyId) { joyId = null; jv.x = jv.y = 0; th.style.transform = 'translate(-50%,-50%)'; }
+      if (t.identifier === lookId) lookId = null;
+    }
+  });
+  $('atkBtn').addEventListener('touchstart', e => { attack(); e.preventDefault(); }, { passive: false });
 }
 
 function attack() {
-  if (gameOver) return;
-  if (isSolo) {
-    aiPlayers.forEach(ai => {
-      if (camera.position.distanceTo(ai.position) < 4 && ai.userData.health > 0) {
-        ai.userData.health -= 30;
-        if (ai.userData.health <= 0) {
-          ai.visible = false;
-          stats.enemies++;
-        }
-      }
-    });
-  } else if (currentRoom) {
-    socket.emit('attack', { room: currentRoom });
-  }
-}
-
-function updateAI() {
-  aiPlayers.forEach(ai => {
-    if (ai.userData.health <= 0) return;
-    const dist = ai.position.distanceTo(camera.position);
-    if (dist > 3) {
-      const dir = new THREE.Vector3().subVectors(camera.position, ai.position).normalize();
-      ai.position.x += dir.x * ai.userData.speed;
-      ai.position.z += dir.z * ai.userData.speed;
-      ai.lookAt(camera.position.x, ai.position.y, camera.position.z);
-    } else if (Math.random() > 0.98) {
-      takeDamage(8);
+  if (gameOver || !started) return;
+  const now = performance.now(); if (now - lastAtk < 450) return; lastAtk = now;
+  if (!isSolo) { if (socket) socket.emit('attack', { room: currentRoom }); return; }
+  const fx = -Math.sin(yaw), fz = -Math.cos(yaw);
+  ais.forEach(a => {
+    if (a.userData.hp <= 0) return;
+    const dx = a.position.x - camera.position.x, dz = a.position.z - camera.position.z, dist = Math.hypot(dx, dz);
+    if (dist < 3.2 && (dx * fx + dz * fz) / (dist || 1) > .3) {
+      a.userData.hp -= 30; move(a.position, fx * .8, fz * .8);
+      a.rotation.z = .25; setTimeout(() => a.rotation.z = 0, 120);
+      if (a.userData.hp <= 0) { a.visible = false; kills++; }
     }
   });
-  if (aiPlayers.every(ai => ai.userData.health <= 0) && isSolo && !gameOver) endGame(true);
+  if (ais.every(a => a.userData.hp <= 0)) endGame(true);
 }
 
-function takeDamage(amount) {
-  playerHealth = Math.max(0, playerHealth - amount);
-  document.getElementById('healthFill').style.width = playerHealth + '%';
-  if (playerHealth <= 0) endGame(false);
+function hurt(n) {
+  health = Math.max(0, health - n); $('healthFill').style.width = health + '%';
+  $('hurt').style.opacity = 1; setTimeout(() => $('hurt').style.opacity = 0, 200);
+  if (health <= 0) endGame(false);
 }
 
 function endGame(won) {
-  if (gameOver) return;
-  gameOver = true;
-  document.getElementById('endTitle').textContent = won ? 'VITÓRIA!' : 'ELIMINADO';
-  document.getElementById('endSubtitle').textContent = won ? 'Você venceu!' : 'Você foi eliminado';
-  document.getElementById('statEnemies').textContent = stats.enemies;
-  document.getElementById('endScreen').style.display = 'flex';
-  if (controls) controls.unlock();
+  if (gameOver) return; gameOver = true;
+  $('endTitle').textContent = won ? 'VITÓRIA!' : 'ELIMINADO';
+  $('endSubtitle').textContent = won ? 'Você venceu o mercado!' : 'Você foi eliminado';
+  $('statEnemies').textContent = kills; $('endScreen').style.display = 'flex';
+  if (document.pointerLockElement) document.exitPointerLock();
 }
 
-function onWindowResize() {
-  if (!camera) return;
-  camera.aspect = window.innerWidth / window.innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
+function update(dt, t) {
+  const f = (keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0) - jv.y, r = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0) + jv.x;
+  let mx = -Math.sin(yaw) * f + Math.cos(yaw) * r, mz = -Math.cos(yaw) * f - Math.sin(yaw) * r;
+  const l = Math.hypot(mx, mz);
+  if (l > 1) { mx /= l; mz /= l; }
+  move(camera.position, mx * 6 * dt, mz * 6 * dt);
+  bob += Math.min(l, 1) * dt * 10;
+  camera.position.y = 1.7 + Math.sin(bob) * .04 * Math.min(l, 1);
+  camera.rotation.set(pitch, yaw, 0);
+
+  ais.forEach(a => {
+    const u = a.userData; if (u.hp <= 0) return;
+    const dx = camera.position.x - a.position.x, dz = camera.position.z - a.position.z, dist = Math.hypot(dx, dz);
+    a.rotation.y = Math.atan2(-dx, -dz);
+    if (dist > 1.6) { move(a.position, dx / dist * 2.6 * dt, dz / dist * 2.6 * dt, .35); walkAnim(a, 1, t); }
+    else { walkAnim(a, 0, t); u.cd -= dt; if (u.cd <= 0) { hurt(8); u.cd = 1; } }
+  });
+
+  if (!isSolo && currentRoom && t - lastSend > .05) {
+    lastSend = t;
+    socket.emit('move', { room: currentRoom, x: camera.position.x, y: camera.position.y, z: camera.position.z, rotY: yaw });
+  }
 }
 
 function animate() {
   requestAnimationFrame(animate);
-  if (!scene || gameOver) return;
-
-  const delta = 0.016;
-  velocity.x -= velocity.x * 8 * delta;
-  velocity.z -= velocity.z * 8 * delta;
-
-  let moveZ = Number(keys.w) - Number(keys.s);
-  let moveX = Number(keys.d) - Number(keys.a);
-  direction.set(moveX, 0, moveZ);
-  if (direction.length() > 0) direction.normalize();
-
-  if (direction.lengthSq() > 0) {
-    velocity.z -= direction.z * 32 * delta;
-    velocity.x -= direction.x * 32 * delta;
-  }
-
-  controls.moveRight(-velocity.x * delta);
-  controls.moveForward(-velocity.z * delta);
-
-  if (isSolo) updateAI();
-
-  if (!isSolo && myId && currentRoom) {
-    socket.emit('move', {
-      room: currentRoom,
-      x: camera.position.x,
-      y: camera.position.y,
-      z: camera.position.z,
-      rotY: camera.rotation.y
-    });
-  }
-
+  const dt = Math.min(clock.getDelta(), .05);
+  if (!gameOver) update(dt, clock.elapsedTime);
   renderer.render(scene, camera);
 }
 </script>
