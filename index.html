@@ -44,7 +44,17 @@
   #endScreen h1 { font-size: 48px; margin-bottom: 10px; }
   #endScreen .stats { background: rgba(255,255,255,0.1); padding: 20px; border-radius: 12px; margin: 20px 0; min-width: 280px; }
   #endScreen .stat { font-size: 18px; margin: 8px 0; }
-  #game { display: none; }
+  #game { 
+    display: none; 
+    position: absolute; 
+    inset: 0; 
+    z-index: 1;
+  }
+  #game canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
   #joystick-zone {
     position: absolute; bottom: 30px; left: 30px; width: 140px; height: 140px;
     background: rgba(255,255,255,0.08); border: 2px solid rgba(255,255,255,0.25);
@@ -106,6 +116,17 @@
 const SERVER_URL = "https://teta-tacaro.onrender.com";
 const socket = io(SERVER_URL);
 const isMobile = window.innerWidth < 800;
+
+const loader = new THREE.TextureLoader();
+const textures = {};
+
+function loadTextures() {
+  return Promise.all([
+    loader.loadAsync('floor.jpg').then(t => { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(15, 15); textures.floor = t; }).catch(() => {}),
+    loader.loadAsync('shelf.jpg').then(t => { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(1, 3); textures.shelf = t; }).catch(() => {}),
+    loader.loadAsync('wall.jpg').then(t => { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(8, 2); textures.wall = t; }).catch(() => {})
+  ]);
+}
 
 let scene, camera, renderer, controls;
 let colliders = [];
@@ -209,30 +230,38 @@ function startSolo() {
 async function startGame(solo) {
   isSolo = solo;
   document.getElementById('lobby').style.display = 'none';
+  document.getElementById('menu').style.display = 'none';
+  document.getElementById('roomMenu').style.display = 'none';
   document.getElementById('game').style.display = 'block';
   document.getElementById('info').style.display = 'block';
   document.getElementById('healthBar').style.display = 'block';
   if (isMobile) document.getElementById('joystick-zone').style.display = 'block';
 
+  await loadTextures();
+
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0x87ceeb);
-  scene.fog = new THREE.Fog(0x87ceeb, 50, 140);
+  scene.fog = new THREE.Fog(0x87ceeb, 40, 120);
 
   camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 300);
-  camera.position.set(0, 1.7, 32);
+  camera.position.set(0, 1.7, 25);
 
   renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setPixelRatio(window.devicePixelRatio);
   renderer.shadowMap.enabled = true;
   document.getElementById('game').appendChild(renderer.domElement);
 
-  scene.add(new THREE.AmbientLight(0xffffff, 0.5));
-  const sun = new THREE.DirectionalLight(0xffffff, 0.8);
-  sun.position.set(40, 60, 25);
+  scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+  const sun = new THREE.DirectionalLight(0xffffff, 0.9);
+  sun.position.set(30, 50, 20);
+  sun.castShadow = true;
   scene.add(sun);
 
   controls = new THREE.PointerLockControls(camera, document.body);
-  document.addEventListener('click', () => { if (!isMobile) controls.lock(); });
+  document.addEventListener('click', (e) => { 
+    if (!isMobile && !e.target.closest('#endScreen')) controls.lock(); 
+  });
 
   createSimpleMap();
   if (solo) spawnAI();
@@ -244,23 +273,41 @@ async function startGame(solo) {
 }
 
 function createSimpleMap() {
-  const ground = new THREE.Mesh(
-    new THREE.PlaneGeometry(80, 80),
-    new THREE.MeshStandardMaterial({ color: 0x4a5568 })
-  );
+  // Chão com textura
+  const floorMat = new THREE.MeshStandardMaterial({ 
+    map: textures.floor || null, 
+    color: textures.floor ? 0xffffff : 0x4a5568, 
+    roughness: 0.85 
+  });
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(100, 100), floorMat);
   ground.rotation.x = -Math.PI / 2;
+  ground.receiveShadow = true;
   scene.add(ground);
 
-  // Algumas paredes e prateleiras simples
-  for (let i = -30; i <= 30; i += 10) {
-    const shelf = new THREE.Mesh(
-      new THREE.BoxGeometry(1.2, 2.2, 20),
-      new THREE.MeshStandardMaterial({ color: 0x718096 })
-    );
-    shelf.position.set(i, 1.1, -5);
+  // Prateleiras com textura de metal
+  const shelfMat = new THREE.MeshStandardMaterial({ 
+    map: textures.shelf || null, 
+    color: textures.shelf ? 0xffffff : 0x718096,
+    metalness: 0.3,
+    roughness: 0.6
+  });
+  for (let i = -25; i <= 25; i += 8) {
+    const shelf = new THREE.Mesh(new THREE.BoxGeometry(1.5, 2.4, 18), shelfMat);
+    shelf.position.set(i, 1.2, -8);
+    shelf.castShadow = true;
+    shelf.receiveShadow = true;
     scene.add(shelf);
     colliders.push(shelf);
   }
+
+  // Parede com textura
+  const wallMat = new THREE.MeshStandardMaterial({ 
+    map: textures.wall || null, 
+    color: textures.wall ? 0xffffff : 0xe2e8f0 
+  });
+  const wall = new THREE.Mesh(new THREE.BoxGeometry(60, 4, 0.5), wallMat);
+  wall.position.set(0, 2, -30);
+  scene.add(wall);
 }
 
 function spawnAI() {
