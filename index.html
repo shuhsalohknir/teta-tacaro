@@ -138,20 +138,22 @@ const objLoader = new THREE.OBJLoader();
 function loadModels() {
   const files = [
     ['guy', 'models/guy.glb', gltfLoader, g => g.scene],
-    ['man', 'models/man.fbx', fbxLoader, g => g],
-    ['woman', 'models/woman.fbx', fbxLoader, g => g],
-    ['baguette', 'models/baguette.fbx', fbxLoader, g => g],
-    ['bottle', 'models/bottle.fbx', fbxLoader, g => g],
-    ['pan', 'models/pan.fbx', fbxLoader, g => g],
+    ['male', 'models/male.obj', objLoader, g => g],
+    ['vrgirl', 'models/vrgirl.obj', objLoader, g => g],
     ['broom', 'models/broom.obj', objLoader, g => g],
+    ['bottle', 'models/bottle.obj', objLoader, g => g],
+    ['bread', 'models/bread.obj', objLoader, g => g],
+    ['toilet', 'models/toilet.obj', objLoader, g => g],
+    ['tree', 'models/tree.obj', objLoader, g => g],
+    ['firtree', 'models/firtree.obj', objLoader, g => g],
     ['car', 'models/car.obj', objLoader, g => g]
   ];
   return Promise.all(files.map(([name, path, loader, extract]) =>
     new Promise(resolve => {
       loader.load(path,
         g => { models[name] = extract(g); console.log('✓', name); resolve(); },
-        xhr => { if (xhr.total) console.log(name, Math.round(xhr.loaded/xhr.total*100) + '%'); },
-        err => { console.warn('✗', name, err); resolve(); }
+        undefined,
+        err => { console.warn('✗', name); resolve(); }
       );
     })
   ));
@@ -259,7 +261,7 @@ function box(w, h, d, mat, x, y, z, collide = true, shadow = true) {
 }
 /* ---------- PERSONAGENS ---------- */
 function makeChar(shirt, pants = 0x2d3748, hair = 0x3b2417) {
-  const modelNames = ['guy', 'man', 'woman'];
+  const modelNames = ['guy', 'male', 'vrgirl'];
   const available = modelNames.filter(n => models[n]);
   if (available.length) {
     const name = available[Math.floor(Math.random() * available.length)];
@@ -401,7 +403,7 @@ function beep(f,d=.08,type='square'){try{ac=ac||new(window.AudioContext||webkitA
 function burst(p,c,n=10){for(let i=0;i<n;i++){const m=new THREE.Mesh(pGeo,new THREE.MeshBasicMaterial({color:c,transparent:true}));m.position.copy(p);scene.add(m);fx.push({m,life:.6,v:new THREE.Vector3((Math.random()-.5)*4,Math.random()*3,(Math.random()-.5)*4)});}}
 function makeItem(i){
   if(ITEMS[i].p){const w=new THREE.Group();ITEMS[i].p.forEach((q,k)=>{const c=makeItem(q);c.scale.setScalar(.85);c.position.x=k?.1:-.1;w.add(c);});return w;}
-  const itemModels = { 0: 'baguette', 1: 'pan', 2: 'bottle', 3: 'broom' };
+  const itemModels = { 0: 'bread', 1: 'bottle', 2: 'toilet', 3: 'broom' };
   if (itemModels[i] && models[itemModels[i]]) {
     const m = getModel(itemModels[i], i === 3 ? 7 : 5);
     if (m) return m;
