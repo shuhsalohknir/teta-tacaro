@@ -20,8 +20,22 @@
   input { padding: 12px; font-size: 16px; border-radius: 8px; border: none; margin: 8px; width: 260px; }
   #playerList { background: rgba(0,0,0,.4); padding: 20px; border-radius: 12px; min-width: 280px; margin: 15px 0; }
   .player { padding: 8px; margin: 4px 0; background: rgba(255,255,255,.1); border-radius: 6px; }
-  #game { display: none; position: absolute; inset: 0; z-index: 1; }
-  #game canvas { display: block; width: 100%; height: 100%; }
+  #game { 
+    display: none; 
+    position: fixed; 
+    top: 0; left: 0; 
+    width: 100vw; 
+    height: 100vh; 
+    z-index: 1; 
+    background: #87ceeb;
+  }
+  #game canvas { 
+    display: block !important; 
+    width: 100% !important; 
+    height: 100% !important; 
+    position: absolute; 
+    top: 0; left: 0;
+  }
   #info { position: absolute; top: 10px; left: 10px; color: #fff; background: rgba(0,0,0,.6); padding: 10px; border-radius: 8px; font-size: 12px; line-height: 1.4; z-index: 20; pointer-events: none; }
   #crosshair { position: absolute; top: 50%; left: 50%; width: 8px; height: 8px; margin: -4px; border: 2px solid rgba(255,255,255,.8); border-radius: 50%; z-index: 20; pointer-events: none; }
   #healthBar { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); width: 220px; height: 18px; background: rgba(0,0,0,.6); border: 2px solid #fff; border-radius: 9px; overflow: hidden; z-index: 20; }
@@ -96,6 +110,7 @@
 <div id="err"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/fflate@0.8.1/umd/index.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/FBXLoader.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/OBJLoader.js"></script>
@@ -278,18 +293,21 @@ async function startGame(solo) {
   if (typeof THREE === 'undefined') { alert('Não foi possível carregar o motor 3D (three.js). Verifique a internet.'); return; }
   started = true; isSolo = solo;
   ['menu', 'lobby', 'roomMenu'].forEach(i => $(i).style.display = 'none');
-  $('game').style.display = 'block';
+  const gameDiv = $('game');
+  gameDiv.style.display = 'block';
   if (isTouch) { $('joystick-zone').style.display = 'block'; $('atkBtn').style.display = 'block'; $('hint').textContent = 'Joystick move · arraste a tela para olhar'; }
 
-  await loadModels();
+  try { await loadModels(); } catch(e) { console.warn('Erro carregando modelos', e); }
   console.log('Modelos carregados:', Object.keys(models));
 
-  // Caixa de teste vermelha (sempre visível)
-  const test = new THREE.Mesh(new THREE.BoxGeometry(1,1,1), new THREE.MeshStandardMaterial({color:0xff0000}));
-  test.position.set(0, 0.5, 15);
-  scene.add(test);
-
   scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x87ceeb);
+  scene.fog = new THREE.Fog(0x87ceeb, 40, 120);
+
+  // Caixa de teste vermelha
+  const test = new THREE.Mesh(new THREE.BoxGeometry(2,2,2), new THREE.MeshStandardMaterial({color:0xff0000}));
+  test.position.set(0, 1, 10);
+  scene.add(test);
   scene.background = new THREE.Color(0x05070d); scene.fog = new THREE.Fog(0x0a0f1c, 25, 150);
   camera = new THREE.PerspectiveCamera(75, innerWidth / innerHeight, .1, 300);
   camera.position.set(-24, 1.7, 36); camera.rotation.order = 'YXZ'; scene.add(camera);
