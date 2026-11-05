@@ -9,11 +9,11 @@ const io = new Server(server, { cors: { origin: "*" } });
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-const rooms = {}; // roomName -> { players: {}, started: false }
+const rooms = {};
 
 function getRoom(roomName) {
   if (!rooms[roomName]) {
-    rooms[roomName] = { players: {}, started: false };
+    rooms[roomName] = { players: {}, started: false, loot: [] };
   }
   return rooms[roomName];
 }
@@ -91,6 +91,22 @@ io.on('connection', (socket) => {
     }
   });
 
+  socket.on('attack', (data) => {
+    const room = rooms[data.room];
+    if (!room || !room.players[socket.id]) return;
+    socket.to(data.room).emit('playerAttacked', {
+      attacker: socket.id,
+      weapon: data.weapon,
+      dmg: data.dmg
+    });
+  });
+
+  socket.on('lootTaken', (data) => {
+    const room = rooms[data.room];
+    if (!room) return;
+    socket.to(data.room).emit('lootTaken', { i: data.i, by: socket.id });
+  });
+
   socket.on('damage', (data) => {
     const room = rooms[data.room];
     if (!room || !room.players[data.target]) return;
@@ -106,6 +122,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('disconnect', () => {
+    console.log('Desconectou:', socket.id);
     for (const roomName in rooms) {
       const room = rooms[roomName];
       if (room.players[socket.id]) {
