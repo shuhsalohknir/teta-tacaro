@@ -148,8 +148,11 @@ function loadModels() {
   ];
   return Promise.all(files.map(([name, path, loader, extract]) =>
     new Promise(resolve => {
-      loader.load(path, g => { models[name] = extract(g); console.log('✓', name); resolve(); },
-        undefined, err => { console.warn('✗', name, err); resolve(); });
+      loader.load(path,
+        g => { models[name] = extract(g); console.log('✓', name); resolve(); },
+        xhr => { if (xhr.total) console.log(name, Math.round(xhr.loaded/xhr.total*100) + '%'); },
+        err => { console.warn('✗', name, err); resolve(); }
+      );
     })
   ));
 }
@@ -163,14 +166,17 @@ function getModel(name, scale = 1) {
       c.castShadow = true;
       c.receiveShadow = true;
       c.visible = true;
+      if (!c.material) c.material = new THREE.MeshStandardMaterial({ color: 0xcccccc });
     }
   });
-  // Força visibilidade e posição no chão
+  // Normaliza personagens para 1.7m
   if (['guy','man','woman'].includes(name)) {
     const box = new THREE.Box3().setFromObject(m);
     const height = Math.max(0.01, box.max.y - box.min.y);
-    m.scale.multiplyScalar(1.7 / height);
-    m.position.y = -box.min.y * (1.7 / height) + 0.01;
+    const factor = 1.7 / height;
+    m.scale.multiplyScalar(factor);
+    m.position.y = -box.min.y * factor + 0.02;
+    console.log(name, 'altura original:', height.toFixed(2), 'fator:', factor.toFixed(3));
   }
   m.visible = true;
   return m;
@@ -264,7 +270,18 @@ function makeChar(shirt, pants = 0x2d3748, hair = 0x3b2417) {
       return m;
     }
   }
-  const g = new THREE.Group(), M = c => std(c), skin = [0xf1c9a5, 0xd9a47a, 0x8d5a3b][(Math.random() * 3) | 0];
+  // Fallback sempre visível
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.5, 1.6, 0.4), new THREE.MeshStandardMaterial({ color: shirt || 0xdc2626 }));
+  body.position.y = 0.8;
+  g.add(body);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 8), new THREE.MeshStandardMaterial({ color: 0xf5d0a9 }));
+  head.position.y = 1.7;
+  g.add(head);
+  g.userData.arms = [new THREE.Group(), new THREE.Group()];
+  g.userData.legs = [new THREE.Group(), new THREE.Group()];
+  return g;
+}
   const add = (geo, mat, x, y, z, p = g) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.castShadow = true; p.add(m); return m; };
   const limb = (w, h, c, x, y, hand) => {
     const p = new THREE.Group(); p.position.set(x, y, 0);
