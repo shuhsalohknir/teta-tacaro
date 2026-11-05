@@ -121,29 +121,43 @@ const fbxLoader = new THREE.FBXLoader();
 const objLoader = new THREE.OBJLoader();
 
 function loadModels() {
-  return Promise.all([
-    gltfLoader.loadAsync('models/guy.glb').then(g => { models.guy = g.scene; }).catch(() => {}),
-    fbxLoader.loadAsync('models/man.fbx').then(g => { models.man = g; }).catch(() => {}),
-    fbxLoader.loadAsync('models/woman.fbx').then(g => { models.woman = g; }).catch(() => {}),
-    fbxLoader.loadAsync('models/baguette.fbx').then(g => { models.baguette = g; }).catch(() => {}),
-    fbxLoader.loadAsync('models/bottle.fbx').then(g => { models.bottle = g; }).catch(() => {}),
-    fbxLoader.loadAsync('models/pan.fbx').then(g => { models.pan = g; }).catch(() => {}),
-    objLoader.loadAsync('models/broom.obj').then(g => { models.broom = g; }).catch(() => {}),
-    objLoader.loadAsync('models/car.obj').then(g => { models.car = g; }).catch(() => {})
-  ]);
+  const files = [
+    ['guy', 'models/guy.glb', gltfLoader, g => g.scene],
+    ['man', 'models/man.fbx', fbxLoader, g => g],
+    ['woman', 'models/woman.fbx', fbxLoader, g => g],
+    ['baguette', 'models/baguette.fbx', fbxLoader, g => g],
+    ['bottle', 'models/bottle.fbx', fbxLoader, g => g],
+    ['pan', 'models/pan.fbx', fbxLoader, g => g],
+    ['broom', 'models/broom.obj', objLoader, g => g],
+    ['car', 'models/car.obj', objLoader, g => g]
+  ];
+  return Promise.all(files.map(([name, path, loader, extract]) =>
+    new Promise(resolve => {
+      loader.load(path, g => { models[name] = extract(g); console.log('✓', name); resolve(); },
+        undefined, err => { console.warn('✗', name, err); resolve(); });
+    })
+  ));
 }
 
 function getModel(name, scale = 1) {
-  if (!models[name]) return null;
+  if (!models[name]) { console.warn('Modelo não carregado:', name); return null; }
   const m = models[name].clone();
   m.scale.setScalar(scale);
-  m.traverse(c => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
+  m.traverse(c => {
+    if (c.isMesh) {
+      c.castShadow = true;
+      c.receiveShadow = true;
+      c.visible = true;
+    }
+  });
+  // Força visibilidade e posição no chão
   if (['guy','man','woman'].includes(name)) {
     const box = new THREE.Box3().setFromObject(m);
-    const height = box.max.y - box.min.y;
-    if (height > 0) m.scale.multiplyScalar(1.7 / height);
-    m.position.y = -box.min.y * (1.7 / height);
+    const height = Math.max(0.01, box.max.y - box.min.y);
+    m.scale.multiplyScalar(1.7 / height);
+    m.position.y = -box.min.y * (1.7 / height) + 0.01;
   }
+  m.visible = true;
   return m;
 }
 
@@ -268,6 +282,12 @@ async function startGame(solo) {
   if (isTouch) { $('joystick-zone').style.display = 'block'; $('atkBtn').style.display = 'block'; $('hint').textContent = 'Joystick move · arraste a tela para olhar'; }
 
   await loadModels();
+  console.log('Modelos carregados:', Object.keys(models));
+
+  // Caixa de teste vermelha (sempre visível)
+  const test = new THREE.Mesh(new THREE.BoxGeometry(1,1,1), new THREE.MeshStandardMaterial({color:0xff0000}));
+  test.position.set(0, 0.5, 15);
+  scene.add(test);
 
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0x05070d); scene.fog = new THREE.Fog(0x0a0f1c, 25, 150);
