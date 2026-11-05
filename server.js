@@ -5,93 +5,118 @@ const path = require('path');
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server, {
-  cors: { origin: "*" }
-});
+const io = new Server(server, { cors: { origin: "*" } });
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-const players = {};
-const MAX_PLAYERS = 8;
+const rooms = {}; // roomName -> { players: {}, started: false }
+
+function getRoom(roomName) {
+  if (!rooms[roomName]) {
+    rooms[roomName] = { players: {}, started: false };
+  }
+  return rooms[roomName];
+}
 
 io.on('connection', (socket) => {
-  console.log('Jogador conectado:', socket.id);
+  console.log('Conectado:', socket.id);
 
-  socket.on('join', (data) => {
-    if (Object.keys(players).length >= MAX_PLAYERS) {
-      socket.emit('lobbyFull');
+  socket.on('createRoom', (data) => {
+    const room = getRoom(data.room);
+    if (Object.keys(room.players).length >= 8) {
+      socket.emit('error', 'Sala cheia');
       return;
     }
-
-    players[socket.id] = {
+    room.players[socket.id] = {
       id: socket.id,
       name: data.name || 'Jogador',
-      x: 0,
-      y: 1.7,
-      z: 30,
+      x: 0, y: 1.7, z: 30,
       health: 100,
-      stats: { enemies: 0, employees: 0, customers: 0 },
-      inventory: {},
       alive: true
     };
-
-    socket.emit('joined', { id: socket.id, players: Object.values(players) });
-    io.emit('playerJoined', players[socket.id]);
-    io.emit('updatePlayers', Object.values(players));
+    socket.join(data.room);
+    socket.emit('joined', { id: socket.id, room: data.room, players: Object.values(room.players) });
+    io.to(data.room).emit('updatePlayers', Object.values(room.players));
   });
 
-  socket.on('move', (pos) => {
-    if (players[socket.id]) {
-      players[socket.id].x = pos.x;
-      players[socket.id].y = pos.y;
-      players[socket.id].z = pos.z;
-      players[socket.id].rotY = pos.rotY || 0;
-      socket.broadcast.emit('playerMoved', {
+  socket.on('joinRoom', (data) => {
+    const room = rooms[data.room];
+    if (!room) {
+      socket.emit('error', 'Sala não existe');
+      return;
+    }
+    if (room.started) {
+      socket.emit('error', 'Partida já começou');
+      return;
+    }
+    if (Object.keys(room.players).length >= 8) {
+      socket.emit('error', 'Sala cheia');
+      return;
+    }
+    room.players[socket.id] = {
+      id: socket.id,
+      name: data.name || 'Jogador',
+      x: 0, y: 1.7, z: 30,
+      health: 100,
+      alive: true
+    };
+    socket.join(data.room);
+    socket.emit('joined', { id: socket.id, room: data.room, players: Object.values(room.players) });
+    io.to(data.room).emit('updatePlayers', Object.values(room.players));
+  });
+
+  socket.on('startGame', (data) => {
+    const room = rooms[data.room];
+    if (!room) return;
+    const count = Object.keys(room.players).length;
+    if (count < 2) {
+      socket.emit('error', 'Mínimo 2 jogadores');
+      return;
+    }
+    room.started = true;
+    io.to(data.room).emit('gameStart');
+  });
+
+  socket.on('move', (data) => {
+    const room = rooms[data.room];
+    if (room && room.players[socket.id]) {
+      room.players[socket.id].x = data.x;
+      room.players[socket.id].y = data.y;
+      room.players[socket.id].z = data.z;
+      room.players[socket.id].rotY = data.rotY || 0;
+      socket.to(data.room).emit('playerMoved', {
         id: socket.id,
-        x: pos.x,
-        y: pos.y,
-        z: pos.z,
-        rotY: pos.rotY
+        x: data.x, y: data.y, z: data.z, rotY: data.rotY
       });
     }
   });
 
-  socket.on('attack', (data) => {
-    if (!players[socket.id] || !players[socket.id].alive) return;
-    io.emit('playerAttacked', { attacker: socket.id, target: data.target });
-  });
-
   socket.on('damage', (data) => {
-    if (players[data.target] && players[data.target].alive) {
-      players[data.target].health -= data.amount || 25;
-      if (players[data.target].health <= 0) {
-        players[data.target].alive = false;
-        players[data.target].health = 0;
-        if (players[socket.id]) {
-          players[socket.id].stats.enemies++;
-        }
-        io.emit('playerDied', { id: data.target, killer: socket.id });
-      }
-      io.emit('updatePlayers', Object.values(players));
+    const room = rooms[data.room];
+    if (!room || !room.players[data.target]) return;
+    const target = room.players[data.target];
+    if (!target.alive) return;
+    target.health -= data.amount || 25;
+    if (target.health <= 0) {
+      target.alive = false;
+      target.health = 0;
+      io.to(data.room).emit('playerDied', { id: data.target, killer: socket.id });
     }
-  });
-
-  socket.on('loot', (item) => {
-    if (players[socket.id]) {
-      players[socket.id].inventory[item] = (players[socket.id].inventory[item] || 0) + 1;
-      socket.broadcast.emit('itemTaken', { id: socket.id, item });
-    }
+    io.to(data.room).emit('updatePlayers', Object.values(room.players));
   });
 
   socket.on('disconnect', () => {
-    console.log('Jogador saiu:', socket.id);
-    delete players[socket.id];
-    io.emit('playerLeft', socket.id);
-    io.emit('updatePlayers', Object.values(players));
+    for (const roomName in rooms) {
+      const room = rooms[roomName];
+      if (room.players[socket.id]) {
+        delete room.players[socket.id];
+        io.to(roomName).emit('playerLeft', socket.id);
+        io.to(roomName).emit('updatePlayers', Object.values(room.players));
+        if (Object.keys(room.players).length === 0) delete rooms[roomName];
+      }
+    }
   });
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log('Servidor Teta Tacaro rodando na porta', PORT);
-});
+server.listen(PORT, () => console.log('Teta Tacaro online na porta', PORT));
