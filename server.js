@@ -9,6 +9,18 @@ const io = new Server(server, { cors: { origin: "*" } });
 
 app.use(express.static(path.join(__dirname, 'public')));
 
+// ---- Editor de mapa: salva public/map.json (defina MAP_PASSWORD no servidor; sem ela a rota fica desligada) ----
+const fs = require('fs');
+app.post('/api/map', express.json({ limit: '1mb' }), (req, res) => {
+  const pw = process.env.MAP_PASSWORD;
+  if (!pw || req.get('x-map-password') !== pw) return res.status(403).json({ error: 'não autorizado' });
+  const m = req.body;
+  if (!Array.isArray(m) || m.length > 5000 || m.some(o => !o || typeof o.t !== 'string' || !isFinite(o.x) || !isFinite(o.z)))
+    return res.status(400).json({ error: 'mapa inválido' });
+  fs.writeFile(path.join(__dirname, 'public', 'map.json'), JSON.stringify(m, null, 1), err =>
+    err ? res.status(500).json({ error: 'falha ao gravar' }) : res.json({ ok: true }));
+});
+
 const rooms = {};
 
 // Dano base dos itens (mesma ordem de ITEMS no index.html):
