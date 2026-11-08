@@ -1111,8 +1111,8 @@ async function _startGame(solo) {
   renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   $('game').appendChild(renderer.domElement); makeEnv();
 
-  scene.add(new THREE.HemisphereLight(0xffeec4, 0x4a3f33, .45));
-  const sun = sunLight = new THREE.DirectionalLight(0x8fa8ff, .22);
+  scene.add(new THREE.HemisphereLight(0xffe2a6, 0x4a3f33, .45));
+  const sun = sunLight = new THREE.DirectionalLight(0xffe4b8, .26);
   sun.position.set(20, 45, 30); sun.castShadow = true;
   sun.shadow.mapSize.set(isTouch ? 1024 : 2048, isTouch ? 1024 : 2048);
   Object.assign(sun.shadow.camera, { left: -58, right: 58, top: 58, bottom: -58, near: 1, far: 160 });
@@ -1120,7 +1120,7 @@ async function _startGame(solo) {
 
   setLoad(45, 'Montando o mapa…'); await nextPaint();
   await loadMapData();
-  buildMap(); buildExtras(); polish(); nightExtras(); buildCold(); grime();
+  buildMap(); buildExtras(); polish(); nightExtras(); buildCold();   // (grime() removido: eram as manchas escuras redondas no chão)
   setLoad(65, 'Carregando texturas…'); await nextPaint();
   onTexStep = f => setLoad(65 + f * 28, 'Carregando texturas…');
   await tryTextures(); onTexStep = null; setLoad(94, 'Quase pronto…');
@@ -1670,6 +1670,7 @@ const COLD_FOG = new THREE.Color(0x24465f);
 function coldUpdate(dt, t) {
   const T = tempAt(camera.position.x, camera.position.z), tg = T ? _clamp((15 - T.t) / 35, 0, 1) : 0;
   coldK += (tg - coldK) * Math.min(1, dt * 3);
+  const wtEl = $('warmTint'); if (wtEl) wtEl.style.opacity = (1 - coldK).toFixed(2);   // filtro quente some no frio
   if (musicaRodando && musicaOn) musica.volume = MUSICA_VOL * (1 - .55 * coldK);   // mais baixa dentro da câmara fria
   const te = $('temp');
   if (T) { te.style.display = 'block'; te.textContent = '🌡️ ' + Math.round(T.t) + '°C · ' + T.n; te.style.color = T.t < 0 ? '#93c5fd' : T.t < 10 ? '#bae6fd' : '#e0f2fe'; }
@@ -1977,7 +1978,7 @@ function buildMap(){
    for(let z=-35;z<=21;z+=8)beam.push([0,H-.25,z+4,80,.4,.3]);
    for(let x=-40;x<=40;x+=20)beam.push([x,H-.2,-8,.3,.3,64]);
    const dark=std(0x1d1c1a,{roughness:.9});
-   inst(dark,hous);inst(dark,rod);inst(dark,beam);inst(new THREE.MeshBasicMaterial({color:0xfffbe6}),tube);}
+   inst(dark,hous);inst(dark,rod);inst(dark,beam);inst(new THREE.MeshBasicMaterial({color:0xfff1cc}),tube);}
 
   const MP=MAPDATA||DEFAULT_MAP,isRot=o=>(((o.rot||0)%180)+180)%180===90,fp=o=>isRot(o)?[o.d,o.w]:[o.w,o.d];
   const ro=(o,lx,lz)=>{const a=(o.rot||0)*Math.PI/180,c=Math.round(Math.cos(a)),s=Math.round(Math.sin(a));return[lx*c+lz*s,-lx*s+lz*c];};
@@ -2154,6 +2155,7 @@ function polish(){
   box(80,.18,.1,bb,0,.09,-39.7,false,false);box(.1,.18,64,bb,-39.7,.09,-8,false,false);box(.1,.18,64,bb,39.7,.09,-8,false,false);
   box(60,.01,.15,std(0xfacc15),0,.02,5.9,false,false);
   const v=document.createElement('div');v.style.cssText='position:absolute;inset:0;pointer-events:none;z-index:12;background:radial-gradient(ellipse at center,transparent 55%,rgba(0,0,0,.6))';$('game').appendChild(v);
+  const wt=document.createElement('div');wt.id='warmTint';wt.style.cssText='position:absolute;inset:0;pointer-events:none;z-index:11;background:rgba(255,188,96,.07)';$('game').appendChild(wt);
   try{ac=ac||new(window.AudioContext||webkitAudioContext)();const o=ac.createOscillator(),gn=ac.createGain();o.frequency.value=55;gn.gain.value=.01;o.connect(gn);gn.connect(ac.destination);o.start();}catch(e){}
 }
 
@@ -2167,10 +2169,10 @@ function flickLamp(x,y,z,c,b,pole){
   flick.push({m,l,s:sp,b,c,next:0,on:true});
 }
 function nightExtras(){
-  (isTouch?[[-16,-12],[16,-12],[0,4],[0,15]]:[[-20,-20],[0,-20],[20,-20],[-20,-3],[0,-3],[20,-3],[-20,14],[0,14],[20,14]]).forEach(([x,z])=>{const l=new THREE.PointLight(0xffe9b8,isTouch?1.3:1.1,32);l.position.set(x,4,z);scene.add(l);
+  (isTouch?[[-16,-12],[16,-12],[0,4],[0,15]]:[[-20,-20],[0,-20],[20,-20],[-20,-3],[0,-3],[20,-3],[-20,14],[0,14],[20,14]]).forEach(([x,z])=>{const l=new THREE.PointLight(0xffdd9e,isTouch?1.3:1.1,32);l.position.set(x,4,z);scene.add(l);
     /* sombras reais das luzes do teto (só algumas, por causa do desempenho) */
     if(!isTouch&&x===0&&Math.abs(z+3)<.1)shadowLight(l,512,34);});
-  [[-5,-8],[15,-14],[15.5,-34],[-24,5]].forEach(([x,z])=>flickLamp(x,4.7,z,0xffe8aa,.9,0));
+  [[-5,-8],[15,-14],[15.5,-34],[-24,5]].forEach(([x,z])=>flickLamp(x,4.7,z,0xffda98,.9,0));
   [[-60,50],[60,50],[-60,-16],[48,-55],[0,57]].forEach(([x,z])=>flickLamp(x,6.2,z,0xffb35a,1.1,1));
   const road=new THREE.Mesh(new THREE.PlaneGeometry(140,12),tx('rua',std(0xffffff,{map:noiseTex('#2b2e34',.4,30,3),roughness:.95})));road.rotation.x=-Math.PI/2;road.position.set(0,.012,62);road.receiveShadow=true;scene.add(road);
   for(let x=-66;x<66;x+=8)box(3,.02,.2,std(0xfacc15),x,.03,62,false,false);
