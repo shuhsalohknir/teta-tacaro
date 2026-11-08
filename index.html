@@ -66,6 +66,24 @@
   input { padding: 12px; font-size: 16px; border-radius: 6px; border: 2px solid #8b6035; background: #f6ecd2; color: #3b2410; margin: 8px; width: 260px; }
   #playerList { background: rgba(35,21,9,.78); border: 1px solid rgba(232,189,78,.35); padding: 20px; border-radius: 8px; min-width: 280px; margin: 15px 0; }
   .player { padding: 8px; margin: 4px 0; background: rgba(255,255,255,.1); border-radius: 6px; }
+  /* lobby: escolha de personagem + times */
+  #lobby { overflow: auto; justify-content: flex-start; padding: 24px 12px; }
+  #lobby h1 { margin-top: auto; }
+  #lobby .menu-btn:last-child { margin-bottom: auto; }
+  #charPick { display: flex; gap: 10px; margin: 6px 0 4px; flex-wrap: wrap; justify-content: center; }
+  .charCard { width: 104px; padding: 10px 6px; border-radius: 8px; cursor: pointer; text-align: center; color: #f6e7c1; font-size: 13px; font-weight: bold;
+    background: linear-gradient(#4a2e17, #36210f); border: 2px solid #6b4423; box-shadow: 0 3px 8px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.12); }
+  .charCard .ico { font-size: 34px; line-height: 1.2; display: block; }
+  .charCard.sel { border-color: #e8bd4e; background: linear-gradient(#7a5230, #5c3a1f); box-shadow: 0 0 12px rgba(232,189,78,.55); }
+  .lobbyHd { font-size: 12px; letter-spacing: 2px; text-transform: uppercase; color: #e9d9b4; margin-top: 12px; }
+  #teamsBox { display: flex; gap: 12px; margin: 10px 0; flex-wrap: wrap; justify-content: center; }
+  .teamCol { background: rgba(35,21,9,.78); border: 2px solid rgba(232,189,78,.35); border-radius: 8px; padding: 10px 12px; min-width: 190px; }
+  .teamCol.t0 { border-color: #3b82f6; } .teamCol.t1 { border-color: #ef4444; }
+  .teamCol h4 { margin: 0 0 6px; font-size: 13px; letter-spacing: 1.5px; text-transform: uppercase; }
+  .teamCol.t0 h4 { color: #93c5fd; } .teamCol.t1 h4 { color: #fca5a5; }
+  .teamCol .player { font-size: 14px; } .teamCol .player.me { outline: 1px solid #e8bd4e; }
+  #teamBtn { width: auto; padding: 10px 18px; font-size: 13px; }
+  #teamNote { font-size: 12px; color: #d9c597; text-align: center; max-width: 380px; margin: 4px 0; }
   #game { 
     display: none; 
     position: fixed; 
@@ -182,15 +200,19 @@
 
 <div id="lobby">
   <h1>Sala: <span id="currentRoom"></span></h1>
-  <div class="subtitle">Mínimo 2 jogadores</div>
+  <div class="subtitle">Mínimo 2 jogadores · até 8 (4 por time)</div>
+  <div class="lobbyHd">Escolha seu personagem</div>
+  <div id="charPick"></div>
   <div id="playerList"></div>
   <div id="lobbyStatus">0 jogadores</div>
+  <div id="teamNote"></div>
+  <button class="menu-btn btn-online" id="teamBtn" onclick="switchTeam()" style="display:none">Trocar de time</button>
   <button class="menu-btn btn-solo" onclick="startOnlineGame()">Iniciar Partida</button>
   <button class="menu-btn btn-back" onclick="location.reload()">Sair</button>
 </div>
 
 <div id="game">
-  <div id="info"><b>TETA TACARO</b><br><span id="hint">WASD mover · E pegar · I inventário · Espaço/clique atacar · F/botão direito arremessar</span></div>
+  <div id="info"><b>TETA TACARO</b><b id="teamTag"></b><br><span id="hint">WASD mover · E pegar · I inventário · Espaço/clique atacar · F/botão direito arremessar</span></div>
   <div id="crosshair"></div>
   <div id="frost"></div>
   <div id="temp"></div>
@@ -949,7 +971,26 @@ function getSocket() {
 function roomInfo() {
   const name = $('playerName').value || 'Jogador', room = $('roomName').value.trim();
   if (!room) { alert('Digite o nome da sala'); return null; }
-  currentRoom = room; return { name, room };
+  currentRoom = room; return { name, room, char: myChar };
+}
+/* ---------- PERSONAGEM E TIMES (lobby online) ---------- */
+const CHAR_INFO = { businessman: { n: 'Empresário', e: '💼' }, adventurer: { n: 'Aventureiro', e: '🧭' }, witch: { n: 'Bruxa', e: '🧙‍♀️' } };
+const TEAM_COL = [0x3b82f6, 0xef4444], TEAM_NAME = ['Azul', 'Vermelho'];
+let myChar = 'businessman', myTeam = 0, teamMode = false;
+function renderCharPick() {
+  const box = $('charPick'); box.innerHTML = '';
+  Object.keys(CHAR_INFO).forEach(k => {
+    const d = document.createElement('div'); d.className = 'charCard' + (k === myChar ? ' sel' : '');
+    d.innerHTML = '<span class="ico">' + CHAR_INFO[k].e + '</span>' + CHAR_INFO[k].n;
+    d.onclick = () => { myChar = k; renderCharPick(); if (socket && currentRoom) socket.emit('setChar', { room: currentRoom, char: k }); };
+    box.appendChild(d);
+  });
+}
+function switchTeam() { if (socket && currentRoom) socket.emit('setTeam', { room: currentRoom, team: myTeam === 0 ? 1 : 0 }); }
+function isAlly(id) {
+  if (!teamMode) return false;
+  const p = lobbyPlayers.find(q => q.id === id);
+  return !!p && p.team === myTeam;
 }
 function createRoom() { const i = roomInfo(), s = getSocket(); if (i && s) s.emit('createRoom', i); }
 function joinRoom() { const i = roomInfo(), s = getSocket(); if (i && s) s.emit('joinRoom', i); }
@@ -968,7 +1009,12 @@ function bindSocket(s) {
     o.position.set(d.x, 0, d.z); o.rotation.y = d.rotY || 0;
   });
   s.on('playerLeft', id => { if (others[id]) { scene.remove(others[id]); delete others[id]; } });
-  s.on('gameStart', d => { mySpawn = (d && d.spawns && d.spawns[myId]) || null; hostId = d ? d.hostId : null; startGame(false); });
+  s.on('gameStart', d => {
+    mySpawn = (d && d.spawns && d.spawns[myId]) || null; hostId = d ? d.hostId : null;
+    teamMode = !!(d && d.teamMode);
+    const tg = $('teamTag'); if (tg) tg.textContent = teamMode ? ' · TIME ' + TEAM_NAME[myTeam].toUpperCase() : '';
+    startGame(false);
+  });
   s.on('monsterHost', d => { hostId = d.id; });
   s.on('monsterWake', () => { if (monster) { if (!monster.awake) wakeMonster(false); } else pendingWake = true; });
   s.on('monsterState', d => { if (!monster) return; monster.net = d; if (d.atk !== monster.atk) { monster.atk = d.atk; monster.actor.attack(); } });
@@ -983,25 +1029,53 @@ function bindSocket(s) {
     if (d.by === myId) shake = Math.max(shake, .7);
   });
   s.on('playerEquip', d => { const o = others[d.id]; if (o) actorOf(o).setWeapon(d.weapon === null || d.weapon === undefined ? null : makeItem(d.weapon)); });
-  s.on('gameOver', d => { if (d.winner === myId) endGame(true); });
+  s.on('gameOver', d => { if (d.teamMode ? d.winnerTeam === myTeam : d.winner === myId) endGame(true); });
   s.on('thrown', d => { if (scene) spawnProj(d.weapon, new THREE.Vector3(d.x, d.y, d.z), new THREE.Vector3(d.dx, d.dy, d.dz), true); });
   s.on('lootTaken', d => { const o = loot[d.i]; if (o && !o.taken) takeLoot(o); });
   s.on('error', m => alert(m));
 }
 function updateLobby(players) {
   lobbyPlayers = players;
-  $('playerList').innerHTML = '';
-  players.forEach(p => {
-    const d = document.createElement('div'); d.className = 'player';
-    d.textContent = p.name + (p.id === myId ? ' (Você)' : ''); $('playerList').appendChild(d);
-  });
-  $('lobbyStatus').textContent = players.length + ' jogador(es)';
+  const me = players.find(p => p.id === myId);
+  if (me) { myChar = me.char || myChar; myTeam = me.team || 0; }
+  renderCharPick();
+  const list = $('playerList'); list.innerHTML = '';
+  const line = p => {
+    const d = document.createElement('div'); d.className = 'player' + (p.id === myId ? ' me' : '');
+    const c = CHAR_INFO[p.char] || CHAR_INFO.businessman;
+    d.textContent = c.e + ' ' + p.name + (p.id === myId ? ' (Você)' : ''); return d;
+  };
+  const teams = players.length > 2;
+  if (teams) {
+    const wrap = document.createElement('div'); wrap.id = 'teamsBox';
+    [0, 1].forEach(t => {
+      const col = document.createElement('div'); col.className = 'teamCol t' + t;
+      const mem = players.filter(p => p.team === t);
+      col.innerHTML = '<h4>Time ' + TEAM_NAME[t] + ' (' + mem.length + '/4)</h4>';
+      mem.forEach(p => col.appendChild(line(p))); wrap.appendChild(col);
+    });
+    list.style.cssText = 'background:none;border:none;padding:0;min-width:0'; list.appendChild(wrap);
+  } else {
+    list.style.cssText = ''; players.forEach(p => list.appendChild(line(p)));
+  }
+  $('teamBtn').style.display = teams ? 'inline-block' : 'none';
+  $('teamNote').textContent = teams
+    ? 'Você está no time ' + TEAM_NAME[myTeam] + '. Não há fogo amigo: só o time adversário leva dano.'
+    : 'Com 3 ou mais jogadores a sala se divide em dois times. Com 2, é duelo 1x1.';
+  $('lobbyStatus').textContent = players.length + '/8 jogador(es)';
 }
 function addOther(p) {
   if (p.id === myId || others[p.id]) return;
   const cols = [0x3b82f6, 0xef4444, 0x22c55e, 0xf59e0b, 0xa855f7, 0x14b8a6, 0xec4899, 0xeab308];
   const idx = Math.max(0, lobbyPlayers.findIndex(q => q.id === p.id));
-  const c = makeChar(cols[idx % cols.length]); c.position.set(p.x || 0, 0, p.z || 0); scene.add(c); others[p.id] = c;
+  const shirt = teamMode ? TEAM_COL[p.team || 0] : cols[idx % cols.length];
+  let c;
+  try { c = (p.char && models[p.char]) ? createActor(p.char, shirt).root : makeChar(shirt); } catch (e) { console.warn('personagem', p.char, e); c = makeChar(shirt); }
+  if (teamMode) {   // anel no chão com a cor do time
+    const ring = new THREE.Mesh(new THREE.RingGeometry(.55, .75, 28), new THREE.MeshBasicMaterial({ color: TEAM_COL[p.team || 0], transparent: true, opacity: .85, side: THREE.DoubleSide, depthWrite: false }));
+    ring.rotation.x = -Math.PI / 2; ring.position.y = .04; c.add(ring);
+  }
+  c.position.set(p.x || 0, 0, p.z || 0); scene.add(c); others[p.id] = c;
   if (p.weapon !== null && p.weapon !== undefined) actorOf(c).setWeapon(makeItem(p.weapon));
 }
 
@@ -1448,7 +1522,7 @@ function projImpact(p) {
       if (d < 3.4) hurtAI(a, p.dmg * (1 - d / 3.4 * .5), a.position.x - pos.x, a.position.z - pos.z);
     });
     if (!isSolo && !p.remote) for (const id in others) {
-      const o = others[id]; if (!o.visible || actorOf(o).dead) continue;
+      const o = others[id]; if (!o.visible || actorOf(o).dead || isAlly(id)) continue;
       const d = Math.hypot(o.position.x - pos.x, o.position.z - pos.z);
       if (d < 3.4) hurtPlayerNet(id, p.dmg * (1 - d / 3.4 * .5));
     }
@@ -1476,7 +1550,7 @@ function updateProjs(dt) {
         }
       }
       if (!isSolo && !p.remote && !res) for (const id in others) {
-        const o = others[id]; if (!o.visible || actorOf(o).dead) continue;
+        const o = others[id]; if (!o.visible || actorOf(o).dead || isAlly(id)) continue;   // aliados: projétil passa direto
         if (Math.hypot(o.position.x - pos.x, o.position.z - pos.z) < .75 && pos.y > .1 && pos.y < 2) {
           if (!EXPLOSIVE.includes(p.t)) hurtPlayerNet(id, p.dmg);
           res = 'ai'; break;

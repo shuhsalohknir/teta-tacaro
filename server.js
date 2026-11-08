@@ -66,8 +66,15 @@ function getRoom(roomName) {
   return rooms[roomName];
 }
 
-function newPlayer(id, name) {
-  return { id, name: name || 'Jogador', x: 0, y: 1.7, z: 30, rotY: 0, health: 100, alive: true, weapon: null, lastAtk: 0, dmgCount: 0, dmgWindow: 0 };
+const CHARS = ['businessman', 'adventurer', 'witch'];
+const MAX_PLAYERS = 8, MAX_PER_TEAM = 4;
+const validChar = c => (CHARS.includes(c) ? c : CHARS[0]);
+const teamCount = (room, t) => Object.values(room.players).filter(p => p.team === t).length;
+// novo jogador entra no time com menos gente (0 = Azul, 1 = Vermelho)
+const pickTeam = room => (teamCount(room, 0) <= teamCount(room, 1) ? 0 : 1);
+
+function newPlayer(id, name, char, team) {
+  return { id, name: name || 'Jogador', char: validChar(char), team: team || 0, x: 0, y: 1.7, z: 30, rotY: 0, health: 100, alive: true, weapon: null, lastAtk: 0, dmgCount: 0, dmgWindow: 0 };
 }
 
 function validWeapon(w) {
@@ -79,9 +86,18 @@ function checkWinner(roomName) {
   const room = rooms[roomName];
   if (!room || !room.started || room.over) return;
   const alive = Object.values(room.players).filter(p => p.alive);
+  if (room.teamMode) {
+    // vence o último time com alguém vivo
+    const teams = new Set(alive.map(p => p.team));
+    if (teams.size <= 1) {
+      room.over = true;
+      io.to(roomName).emit('gameOver', { winner: alive[0] ? alive[0].id : null, winnerTeam: alive[0] ? alive[0].team : null, teamMode: true });
+    }
+    return;
+  }
   if (alive.length <= 1) {
     room.over = true;
-    io.to(roomName).emit('gameOver', { winner: alive[0] ? alive[0].id : null });
+    io.to(roomName).emit('gameOver', { winner: alive[0] ? alive[0].id : null, winnerTeam: null, teamMode: false });
   }
 }
 
@@ -91,6 +107,9 @@ function applyDamage(roomName, attackerId, targetId, amount, kind) {
   if (!room || room.over) return;
   const target = room.players[targetId];
   if (!target || !target.alive || targetId === attackerId) return;
+  // fogo amigo desligado: jogadores do mesmo time não se machucam
+  const attacker = room.players[attackerId];
+  if (room.teamMode && attacker && attacker.team === target.team) return;
   target.health = Math.max(0, target.health - amount);
   io.to(roomName).emit('playerHit', { id: targetId, by: attackerId, health: target.health, dmg: amount, kind });
   if (target.health <= 0) {
@@ -106,11 +125,11 @@ io.on('connection', (socket) => {
 
   socket.on('createRoom', (data) => {
     const room = getRoom(data.room);
-    if (Object.keys(room.players).length >= 8) {
+    if (Object.keys(room.players).length >= MAX_PLAYERS) {
       socket.emit('error', 'Sala cheia');
       return;
     }
-    room.players[socket.id] = newPlayer(socket.id, data.name);
+    room.players[socket.id] = newPlayer(socket.id, data.name, data.char, pickTeam(room));
     socket.join(data.room);
     socket.emit('joined', { id: socket.id, room: data.room, players: Object.values(room.players) });
     io.to(data.room).emit('updatePlayers', Object.values(room.players));
@@ -126,36 +145,65 @@ io.on('connection', (socket) => {
       socket.emit('error', 'Partida já começou');
       return;
     }
-    if (Object.keys(room.players).length >= 8) {
+    if (Object.keys(room.players).length >= MAX_PLAYERS) {
       socket.emit('error', 'Sala cheia');
       return;
     }
-    room.players[socket.id] = newPlayer(socket.id, data.name);
+    room.players[socket.id] = newPlayer(socket.id, data.name, data.char, pickTeam(room));
     socket.join(data.room);
     socket.emit('joined', { id: socket.id, room: data.room, players: Object.values(room.players) });
     io.to(data.room).emit('updatePlayers', Object.values(room.players));
   });
 
+  // Lobby: escolher personagem
+  socket.on('setChar', (data) => {
+    const room = rooms[data.room];
+    if (!room || room.started || !room.players[socket.id]) return;
+    room.players[socket.id].char = validChar(data.char);
+    io.to(data.room).emit('updatePlayers', Object.values(room.players));
+  });
+
+  // Lobby: trocar de time (máx. 4 por time)
+  socket.on('setTeam', (data) => {
+    const room = rooms[data.room];
+    if (!room || room.started || !room.players[socket.id]) return;
+    const t = data.team === 1 ? 1 : 0, me = room.players[socket.id];
+    if (me.team === t) return;
+    if (teamCount(room, t) >= MAX_PER_TEAM) { socket.emit('error', 'Esse time já está cheio (4)'); return; }
+    me.team = t;
+    io.to(data.room).emit('updatePlayers', Object.values(room.players));
+  });
+
   socket.on('startGame', (data) => {
     const room = rooms[data.room];
-    if (!room) return;
-    const count = Object.keys(room.players).length;
+    if (!room || room.started) return;
+    const ids = Object.keys(room.players), count = ids.length;
     if (count < 2) {
       socket.emit('error', 'Mínimo 2 jogadores');
       return;
     }
+    // 3+ jogadores = times (cada time precisa de ao menos 1); 2 jogadores = duelo 1x1
+    const teamMode = count > 2;
+    if (teamMode && (teamCount(room, 0) === 0 || teamCount(room, 1) === 0)) {
+      socket.emit('error', 'Cada time precisa de ao menos 1 jogador');
+      return;
+    }
     room.started = true;
     room.over = false;
-    const spawns = {};
-    Object.keys(room.players).forEach((id, i) => {
-      const p = room.players[id], sp = SPAWNS[i % SPAWNS.length];
+    room.teamMode = teamMode;
+    const spawns = {}, used = [0, 0];
+    ids.forEach((id, i) => {
+      const p = room.players[id];
+      // time Azul nasce nos cantos pares (sul), time Vermelho nos ímpares (norte)
+      const si = teamMode ? (p.team + 2 * used[p.team]++) : i;
+      const sp = SPAWNS[si % SPAWNS.length];
       p.health = 100; p.alive = true; p.weapon = null; p.x = sp.x; p.z = sp.z; p.rotY = sp.ry;
       spawns[id] = sp;
     });
     room.monster = newMonster();
-    room.hostId = Object.keys(room.players)[0];
+    room.hostId = ids[0];
     io.to(data.room).emit('updatePlayers', Object.values(room.players));
-    io.to(data.room).emit('gameStart', { spawns, hostId: room.hostId });
+    io.to(data.room).emit('gameStart', { spawns, hostId: room.hostId, teamMode });
   });
 
   socket.on('move', (data) => {
@@ -195,6 +243,7 @@ io.on('connection', (socket) => {
       const fx = -Math.sin(a.rotY || 0), fz = -Math.cos(a.rotY || 0);
       Object.values(r.players).forEach(p => {
         if (p.id === a.id || !p.alive) return;
+        if (r.teamMode && p.team === a.team) return;   // sem fogo amigo
         const dx = p.x - a.x, dz = p.z - a.z, dist = Math.hypot(dx, dz);
         if (dist < MELEE_RANGE && (dx * fx + dz * fz) / (dist || 1) > MELEE_DOT) {
           applyDamage(roomName, a.id, p.id, dmg, 'melee');
