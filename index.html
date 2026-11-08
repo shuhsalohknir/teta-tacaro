@@ -870,6 +870,7 @@ function std(color, o = {}) { return new THREE.MeshStandardMaterial(Object.assig
 function box(w, h, d, mat, x, y, z, collide = true, shadow = true) {
   const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
   m.position.set(x, y, z); m.castShadow = shadow; m.receiveShadow = true; scene.add(m);
+  if (mat.userData && mat.userData.boxes) mat.userData.boxes.push([m, w, h, d]);   // para ajustar o UV quando a textura carregar
   if (collide) colliders.push({ x1: x - w / 2, x2: x + w / 2, z1: z - d / 2, z2: z + d / 2 });
   return m;
 }
@@ -1702,10 +1703,10 @@ async function loadMapData() {
   } catch (e) { MAPDATA = DEFAULT_MAP; console.warn('map.json não carregou, usando o mapa padrão embutido:', e.message || e); }
 }
 function buildMap(){
-  const M=std,wm=M(0xffffff,{map:wallBlockTex()}),st=M(0xdc2626);
-  const fl=new THREE.Mesh(new THREE.PlaneGeometry(80,64),(()=>{const t=floorTex(),m=M(0xffffff,{map:t,bumpMap:t,bumpScale:2,roughness:.18});MATS.floor=m;return m;})());
+  const M=std,wm=tx('parede',M(0xffffff,{map:wallBlockTex()})),st=M(0xdc2626);
+  const fl=new THREE.Mesh(new THREE.PlaneGeometry(80,64),(()=>{const t=floorTex(),m=M(0xffffff,{map:t,bumpMap:t,bumpScale:2,roughness:.18});MATS.floor=m;return tx('piso',m);})());
   fl.material.map.repeat.set(40,32);fl.rotation.x=-Math.PI/2;fl.position.set(0,0,-8);fl.receiveShadow=true;scene.add(fl);
-  const ce=new THREE.Mesh(new THREE.PlaneGeometry(80,64),M(0xffffff,{map:ceilTex()}));ce.rotation.x=Math.PI/2;ce.position.set(0,H,-8);scene.add(ce);
+  const ce=new THREE.Mesh(new THREE.PlaneGeometry(80,64),tx('teto',M(0xffffff,{map:ceilTex()})));ce.rotation.x=Math.PI/2;ce.position.set(0,H,-8);scene.add(ce);
   const inst=(mat,list)=>{const m=new THREE.InstancedMesh(new THREE.BoxGeometry(1,1,1),mat,list.length),o=new THREE.Object3D();list.forEach((q,i)=>{o.position.set(q[0],q[1],q[2]);o.scale.set(q[3],q[4],q[5]);o.updateMatrix();m.setMatrixAt(i,o.matrix);});m.frustumCulled=false;scene.add(m);return m;};
   {const hous=[],tube=[],rod=[],beam=[];
    for(let x=-35;x<=35;x+=10)for(let z=-35;z<=21;z+=8){hous.push([x,H-.8,z,3.2,.1,1.3]);tube.push([x,H-.86,z,3,.04,1.1]);rod.push([x-1.2,H-.62,z,.04,.35,.04],[x+1.2,H-.62,z,.04,.35,.04]);}
@@ -1728,33 +1729,33 @@ function buildMap(){
     for(let z=Math.min(z0,z1)+.3;z<Math.max(z0,z1)-.2;z+=.6)for(let y=.45;y<h;y+=.5){P.push([x+dir*(isTouch?.1:.27),y,z,.8+Math.random()*.5,pal[(Math.random()*pal.length)|0],Math.random()<.35]);if(!isTouch)P.push([x-dir*.2,y,z,.8+Math.random()*.5,pal[(Math.random()*pal.length)|0],Math.random()<.35]);}
   };
   MP.filter(o=>o.t==='shelf').forEach(o=>shelf(o.x,o.z-o.len/2,o.z+o.len/2,o.rot===180?-1:1,o.kind==='stock'?bx:gp));
-  {const ibm=new THREE.InstancedMesh(new THREE.BoxGeometry(1,1,1),ironMat(),IB.length),dd=new THREE.Object3D();
+  {const ibm=new THREE.InstancedMesh(new THREE.BoxGeometry(1,1,1),tx('prateleira_ferro',ironMat()),IB.length),dd=new THREE.Object3D();
    IB.forEach((q,i)=>{dd.position.set(q[0],q[1],q[2]);dd.scale.set(q[3],q[4],q[5]);dd.updateMatrix();ibm.setMatrixAt(i,dd.matrix);});
    ibm.castShadow=true;ibm.receiveShadow=true;ibm.frustumCulled=false;scene.add(ibm);}
-  const im=new THREE.InstancedMesh(new THREE.BoxGeometry(.3,.32,.3),M(0xffffff,{map:packTex(),roughness:.45}),P.length),d=new THREE.Object3D(),col=new THREE.Color();
-  const cm=new THREE.InstancedMesh(new THREE.CylinderGeometry(.11,.12,.34,10),M(0xffffff,{map:packTex(),roughness:.3}),P.length);P.forEach((q,i)=>{d.position.set(q[0],q[1],q[2]);col.setHex(q[4]);d.scale.set(q[5]?0:1,q[5]?0:q[3],q[5]?0:1);d.updateMatrix();im.setMatrixAt(i,d.matrix);im.setColorAt(i,col);d.scale.set(q[5]?1:0,q[5]?q[3]:0,q[5]?1:0);d.updateMatrix();cm.setMatrixAt(i,d.matrix);cm.setColorAt(i,col);});cm.castShadow=true;scene.add(cm);
-  im.castShadow=true;scene.add(im);const bi=new THREE.InstancedMesh(new THREE.BoxGeometry(1,1,1),M(0xffffff),BD.length);BD.forEach((q,i)=>{d.position.set(q[0],q[1],q[2]);d.scale.set(q[3],q[4],q[5]);d.updateMatrix();bi.setMatrixAt(i,d.matrix);bi.setColorAt(i,col.setHex(q[6]));});bi.receiveShadow=true;scene.add(bi);const rbm=new THREE.InstancedMesh(new THREE.BoxGeometry(1,1,1),(()=>{const t=boxTex(),m=M(0xffffff,{roughness:.85,map:t,bumpMap:t,bumpScale:1.5});MATS.box=m;return m;})(),RB.length);RB.forEach((q,i)=>{d.position.set(q[0],q[1],q[2]);d.scale.set(q[3],q[4],q[5]);d.updateMatrix();rbm.setMatrixAt(i,d.matrix);rbm.setColorAt(i,col.setHex(q[6]));});rbm.castShadow=true;scene.add(rbm);const rpm=new THREE.InstancedMesh(new THREE.BoxGeometry(1,1,1),M(0xa16207),RP.length);RP.forEach((q,i)=>{d.position.set(q[0],q[1],q[2]);d.scale.set(1.02,.14,.95);d.updateMatrix();rpm.setMatrixAt(i,d.matrix);});scene.add(rpm);const pom=new THREE.InstancedMesh(new THREE.BoxGeometry(1,1,1),beam,PO.length);PO.forEach((q,i)=>{d.position.set(q[0],1.15,q[1]);d.scale.set(.07,2.3,.07);d.updateMatrix();pom.setMatrixAt(i,d.matrix);});scene.add(pom);
+  const im=new THREE.InstancedMesh(new THREE.BoxGeometry(.3,.32,.3),tx('embalagem_caixa',M(0xffffff,{map:packTex(),roughness:.45})),P.length),d=new THREE.Object3D(),col=new THREE.Color();
+  const cm=new THREE.InstancedMesh(new THREE.CylinderGeometry(.11,.12,.34,10),tx('embalagem_lata',M(0xffffff,{map:packTex(),roughness:.3})),P.length);P.forEach((q,i)=>{d.position.set(q[0],q[1],q[2]);col.setHex(q[4]);d.scale.set(q[5]?0:1,q[5]?0:q[3],q[5]?0:1);d.updateMatrix();im.setMatrixAt(i,d.matrix);im.setColorAt(i,col);d.scale.set(q[5]?1:0,q[5]?q[3]:0,q[5]?1:0);d.updateMatrix();cm.setMatrixAt(i,d.matrix);cm.setColorAt(i,col);});cm.castShadow=true;scene.add(cm);
+  im.castShadow=true;scene.add(im);const bi=new THREE.InstancedMesh(new THREE.BoxGeometry(1,1,1),M(0xffffff),BD.length);BD.forEach((q,i)=>{d.position.set(q[0],q[1],q[2]);d.scale.set(q[3],q[4],q[5]);d.updateMatrix();bi.setMatrixAt(i,d.matrix);bi.setColorAt(i,col.setHex(q[6]));});bi.receiveShadow=true;scene.add(bi);const rbm=new THREE.InstancedMesh(new THREE.BoxGeometry(1,1,1),(()=>{const t=boxTex(),m=M(0xffffff,{roughness:.85,map:t,bumpMap:t,bumpScale:1.5});MATS.box=m;return tx('caixa_papelao',m);})(),RB.length);RB.forEach((q,i)=>{d.position.set(q[0],q[1],q[2]);d.scale.set(q[3],q[4],q[5]);d.updateMatrix();rbm.setMatrixAt(i,d.matrix);rbm.setColorAt(i,col.setHex(q[6]));});rbm.castShadow=true;scene.add(rbm);const rpm=new THREE.InstancedMesh(new THREE.BoxGeometry(1,1,1),tx('palete_madeira',M(0xa16207)),RP.length);RP.forEach((q,i)=>{d.position.set(q[0],q[1],q[2]);d.scale.set(1.02,.14,.95);d.updateMatrix();rpm.setMatrixAt(i,d.matrix);});scene.add(rpm);const pom=new THREE.InstancedMesh(new THREE.BoxGeometry(1,1,1),beam,PO.length);PO.forEach((q,i)=>{d.position.set(q[0],1.15,q[1]);d.scale.set(.07,2.3,.07);d.updateMatrix();pom.setMatrixAt(i,d.matrix);});scene.add(pom);
 
   // perecíveis: geladeiras e freezers (map.json)
-  const glass=M(0x9fd8ff,{emissive:0x2b6c8f,emissiveIntensity:.6,metalness:.5,roughness:.1}),blue=M(0x1e3a8a),white=M(0xf1f5f9);
+  const glass=M(0x9fd8ff,{emissive:0x2b6c8f,emissiveIntensity:.6,metalness:.5,roughness:.1}),blue=tx('geladeira',M(0x1e3a8a)),white=tx('freezer',M(0xf1f5f9));
   MP.filter(o=>o.t==='fridge').forEach(o=>{const[fx,fz]=fp(o),g=ro(o,0,o.d/2+.05),r=isRot(o);box(fx,2.4,fz,blue,o.x,1.2,o.z);box(r?.1:o.w-.4,2,r?o.w-.4:.1,glass,o.x+g[0],1.2,o.z+g[1],false,false);});
   MP.filter(o=>o.t==='freezer').forEach(o=>{const[fx,fz]=fp(o);box(fx,.9,fz,white,o.x,.45,o.z);box(fx-.2,.05,fz-.2,glass,o.x,.93,o.z,false,false);});
 
   // hortifrúti (map.json)
-  const wood=M(0x92400e),fc=[0xef4444,0xf97316,0x84cc15,0xfacc15],PR=MP.filter(o=>o.t==='produce'),fr=new THREE.InstancedMesh(new THREE.SphereGeometry(.16,8,6),M(0xffffff),Math.max(1,PR.length*40));let n=0;
+  const wood=tx('banca_madeira',M(0x92400e)),fc=[0xef4444,0xf97316,0x84cc15,0xfacc15],PR=MP.filter(o=>o.t==='produce'),fr=new THREE.InstancedMesh(new THREE.SphereGeometry(.16,8,6),M(0xffffff),Math.max(1,PR.length*40));let n=0;
   PR.forEach(o=>{const[fx,fz]=fp(o);box(fx,.8,fz,wood,o.x,.4,o.z);for(let k=0;k<40;k++){d.position.set(o.x+(Math.random()-.5)*Math.max(.2,fx-.5),.95+Math.random()*.12,o.z+(Math.random()-.5)*Math.max(.2,fz-.3));d.scale.set(1,1,1);d.updateMatrix();fr.setMatrixAt(n,d.matrix);fr.setColorAt(n++,col.setHex(fc[k%4]));}});
   fr.count=n;fr.castShadow=true;scene.add(fr);
 
   // caixas (map.json)
-  const dark=M(0x334155);
+  const dark=tx('balcao_caixa',M(0x334155));
   MP.filter(o=>o.t==='checkout').forEach(o=>{const[fx,fz]=fp(o),r=isRot(o);box(fx,.95,fz,dark,o.x,.475,o.z);let p=ro(o,0,-.4);box(r?1.8:.9,.05,r?.9:1.8,M(0x0f172a),o.x+p[0],1,o.z+p[1],false);p=ro(o,.3,1.1);box(r?.3:.4,.35,r?.4:.3,M(0x22c55e),o.x+p[0],1.2,o.z+p[1],false);});
   // placas (map.json)
   MP.filter(o=>o.t==='sign').forEach(o=>{const m=label(o.n||'',o.text||'',o.w,o.h,o.x,o.y!=null?o.y:3.5,o.z);m.rotation.y=(o.rot||0)*Math.PI/180;});
   extraDetail();
 }
 function buildExtras(){
-  const g0=new THREE.Mesh(new THREE.PlaneGeometry(400,400),std(0xffffff,{map:noiseTex('#5b8c3a',.35,60,60),roughness:1}));g0.rotation.x=-Math.PI/2;g0.position.y=-.02;g0.receiveShadow=true;scene.add(g0);
-  const asp=new THREE.Mesh(new THREE.PlaneGeometry(80,30),(()=>{const t=noiseTex('#3b3f46',.5,20,8);return std(0xffffff,{map:t,bumpMap:t,bumpScale:3,roughness:.95});})());MATS.asphalt=asp.material;asp.rotation.x=-Math.PI/2;asp.position.set(0,.01,39);asp.receiveShadow=true;scene.add(asp);
+  const g0=new THREE.Mesh(new THREE.PlaneGeometry(400,400),tx('grama',std(0xffffff,{map:noiseTex('#5b8c3a',.35,60,60),roughness:1})));g0.rotation.x=-Math.PI/2;g0.position.y=-.02;g0.receiveShadow=true;scene.add(g0);
+  const asp=new THREE.Mesh(new THREE.PlaneGeometry(80,30),(()=>{const t=noiseTex('#3b3f46',.5,20,8);return std(0xffffff,{map:t,bumpMap:t,bumpScale:3,roughness:.95});})());MATS.asphalt=asp.material;tx('asfalto',asp.material);asp.rotation.x=-Math.PI/2;asp.position.set(0,.01,39);asp.receiveShadow=true;scene.add(asp);
   const sw=new THREE.Mesh(new THREE.PlaneGeometry(80,4),std(0xb8b4aa));sw.rotation.x=-Math.PI/2;sw.position.set(0,.015,26);sw.receiveShadow=true;scene.add(sw);
   const yel=std(0xfacc15),wht=std(0xf8fafc);
   for(let i=0;i<=12;i++)box(.12,.02,8,yel,-36+i*6,.03,37,false,false);
@@ -1868,13 +1869,13 @@ function nightExtras(){
   (isTouch?[[-16,-12],[16,-12],[0,4],[0,15]]:[[-20,-20],[0,-20],[20,-20],[-20,-3],[0,-3],[20,-3],[-20,14],[0,14],[20,14]]).forEach(([x,z])=>{const l=new THREE.PointLight(0xfff0d6,isTouch?1.3:1.1,32);l.position.set(x,4,z);scene.add(l);});
   [[-5,-8],[15,-14],[15.5,-34],[-24,5]].forEach(([x,z])=>flickLamp(x,4.7,z,0xfff1c9,.9,0));
   [[-60,50],[60,50],[-60,-16],[48,-55],[0,57]].forEach(([x,z])=>flickLamp(x,6.2,z,0xffb35a,1.1,1));
-  const road=new THREE.Mesh(new THREE.PlaneGeometry(140,12),std(0xffffff,{map:noiseTex('#2b2e34',.4,30,3),roughness:.95}));road.rotation.x=-Math.PI/2;road.position.set(0,.012,62);road.receiveShadow=true;scene.add(road);
+  const road=new THREE.Mesh(new THREE.PlaneGeometry(140,12),tx('rua',std(0xffffff,{map:noiseTex('#2b2e34',.4,30,3),roughness:.95})));road.rotation.x=-Math.PI/2;road.position.set(0,.012,62);road.receiveShadow=true;scene.add(road);
   for(let x=-66;x<66;x+=8)box(3,.02,.2,std(0xfacc15),x,.03,62,false,false);
   const wire=std(0x1f2937,{transparent:true,opacity:.35,side:THREE.DoubleSide}),fp=std(0x374151);
   [[0,-69.6,0],[0,69.6,0],[-69.6,0,1],[69.6,0,1]].forEach(([x,z,r])=>{const w=new THREE.Mesh(new THREE.PlaneGeometry(140,2.6),wire);w.position.set(x,1.3,z);if(r)w.rotation.y=Math.PI/2;scene.add(w);for(let i=-70;i<=70;i+=7)box(.15,2.8,.15,fp,r?x:i,1.4,r?i:z,false,false);});
   const tree=(x,z)=>{if(placeTree(x,z,false)){colliders.push({x1:x-.4,x2:x+.4,z1:z-.4,z2:z+.4});return;}const t=new THREE.Mesh(new THREE.CylinderGeometry(.2,.28,2,8),std(0x3f2a14)),l=new THREE.Mesh(new THREE.SphereGeometry(1.6,10,8),std(0x1f4d2a));t.position.set(x,1,z);l.position.set(x,3.3,z);t.castShadow=l.castShadow=true;scene.add(t,l);colliders.push({x1:x-.4,x2:x+.4,z1:z-.4,z2:z+.4});};
   for(let i=0;i<12;i++){const tx=(i%2?1:-1)*(50+(i%4)*5),tz=-62+i*9.5;if(tx<-44&&tz<-20)continue;tree(tx,tz);}
-  const pad=new THREE.Mesh(new THREE.PlaneGeometry(50,30),std(0xffffff,{map:noiseTex('#6b7280',.35,12,6),roughness:.9}));pad.rotation.x=-Math.PI/2;pad.position.set(30,.011,-55);pad.receiveShadow=true;scene.add(pad);
+  const pad=new THREE.Mesh(new THREE.PlaneGeometry(50,30),tx('concreto_doca',std(0xffffff,{map:noiseTex('#6b7280',.35,12,6),roughness:.9})));pad.rotation.x=-Math.PI/2;pad.position.set(30,.011,-55);pad.receiveShadow=true;scene.add(pad);
   [[18,-62,0xb91c1c],[24,-62,0x1d4ed8],[30,-62,0x15803d],[42,-62,0xf59e0b],[18,-56,0x0e7490]].forEach(([x,z,c])=>{box(2.4,2.6,6,std(c,{metalness:.4,roughness:.5}),x,1.3,z);box(2.5,.1,6.1,std(0x111111),x,2.62,z,false);});
   [10,13].forEach(x=>box(1.8,1.2,1,std(0x166534),x,.6,-45));
   const cb=[0xb98a56,0xa97c47,0xc9a26b,0x93c5fd],pw=std(0xa16207);
@@ -1891,12 +1892,57 @@ function grime(){
   for(let i=0;i<90;i++)add(-38+Math.random()*76,-26+Math.random()*48,.025,1.5+Math.random()*3.5,1+Math.random()*2,Math.random()*6);
   for(let i=0;i<30;i++)add(-38+Math.random()*76,26+Math.random()*26,.02,1+Math.random()*2,.8+Math.random()*1.5,Math.random()*6);
 }
-function tryTextures(){ // opcional: coloque assets/floor_color.jpg, floor_normal.jpg, floor_rough.jpg (idem asphalt_ e box_)
-  const L=new THREE.TextureLoader(),ld=(f,rx,ry,cb)=>L.load('assets/'+f,t=>{t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(rx,ry);t.anisotropy=8;cb(t);},undefined,()=>{});
-  [['floor',40,32],['asphalt',20,8],['box',1,1]].forEach(([n,rx,ry])=>{const m=MATS[n];if(!m)return;
-    ld(n+'_color.jpg',rx,ry,t=>{m.map=t;m.bumpMap=null;m.needsUpdate=true;});
-    ld(n+'_normal.jpg',rx,ry,t=>{m.normalMap=t;m.bumpMap=null;m.needsUpdate=true;});
-    ld(n+'_rough.jpg',rx,ry,t=>{m.roughnessMap=t;m.roughness=1;m.needsUpdate=true;});});
+/* ---------- TEXTURAS (opcionais) ----------
+   Coloque as imagens em assets/texturas/ com os nomes da tabela abaixo. Sem o arquivo, o jogo mantém o visual atual.
+   tile = tamanho em metros que cada repetição da imagem cobre (paredes, móveis, chão). Sem tile = a imagem é esticada no objeto.
+   pbr:true = também procura NOME_normal.jpg e NOME_rough.jpg (opcionais). Para desligar tudo: USAR_TEXTURAS = false. */
+const USAR_TEXTURAS = true, TEX_PASTA = 'assets/texturas/', TEXMATS = [];
+const TEXTURAS = {
+  piso:             { file: 'piso_mercado.jpg',     area: [80, 64],   tile: 2, pbr: true },
+  teto:             { file: 'teto.jpg',             area: [80, 64],   tile: 2 },
+  parede:           { file: 'parede.jpg',           tile: 3 },
+  prateleira_ferro: { file: 'prateleira_ferro.jpg' },
+  embalagem_caixa:  { file: 'embalagem_caixa.jpg' },
+  embalagem_lata:   { file: 'embalagem_lata.jpg' },
+  caixa_papelao:    { file: 'caixa_papelao.jpg',    pbr: true },
+  palete_madeira:   { file: 'palete_madeira.jpg' },
+  geladeira:        { file: 'geladeira.jpg',        tile: 2 },
+  freezer:          { file: 'freezer.jpg',          tile: 1.5 },
+  banca_madeira:    { file: 'banca_madeira.jpg',    tile: 1.5 },
+  balcao_caixa:     { file: 'balcao_caixa.jpg',     tile: 1.5 },
+  asfalto:          { file: 'asfalto.jpg',          area: [80, 30],  tile: 4, pbr: true },
+  rua:              { file: 'rua.jpg',              area: [140, 12], tile: 4 },
+  concreto_doca:    { file: 'concreto_doca.jpg',    area: [50, 30],  tile: 4 },
+  grama:            { file: 'grama.jpg',            area: [400, 400], tile: 4 }
+};
+function tx(key, mat) {   // marca um material para receber a textura 'key' da tabela
+  if (!mat || !TEXTURAS[key] || mat.userData.texKey) return mat;
+  mat.userData.texKey = key; mat.userData.boxes = []; TEXMATS.push(mat); return mat;
+}
+function scaleBoxUV(g, w, h, d, tile) {   // repete a textura a cada 'tile' metros em cada face da caixa
+  const uv = g.attributes.uv, dims = [[d, h], [d, h], [w, d], [w, d], [w, h], [w, h]];
+  for (let f = 0; f < 6; f++) for (let v = 0; v < 4; v++) { const i = f * 4 + v; uv.setXY(i, uv.getX(i) * dims[f][0] / tile, uv.getY(i) * dims[f][1] / tile); }
+  uv.needsUpdate = true;
+}
+function tryTextures() {
+  if (!USAR_TEXTURAS) return;
+  const L = new THREE.TextureLoader();
+  const ld = (f, E, cb) => L.load(TEX_PASTA + f, t => {
+    t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 8;
+    if (E.area && E.tile) t.repeat.set(E.area[0] / E.tile, E.area[1] / E.tile);
+    cb(t);
+  }, undefined, () => {});
+  TEXMATS.forEach(m => {
+    const E = TEXTURAS[m.userData.texKey], ext = /(\.\w+)$/;
+    ld(E.file, E, t => {
+      m.map = t; m.bumpMap = null; m.color.set(0xffffff); m.needsUpdate = true; console.log('✓ textura', E.file);
+      if (E.tile && !E.area) m.userData.boxes.forEach(([mesh, w, h, d]) => scaleBoxUV(mesh.geometry, w, h, d, E.tile));
+    });
+    if (E.pbr) {
+      ld(E.file.replace(ext, '_normal$1'), E, t => { m.normalMap = t; m.bumpMap = null; m.needsUpdate = true; });
+      ld(E.file.replace(ext, '_rough$1'), E, t => { m.roughnessMap = t; m.roughness = 1; m.needsUpdate = true; });
+    }
+  });
 }
 /* ---------- carros e árvores com textura ---------- */
 function plainTex(n) {
