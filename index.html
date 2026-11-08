@@ -19,6 +19,18 @@
     z-index: 100; color: #fff;
   }
   #lobby, #roomMenu { display: none; }
+  /* tela de carregamento: mesmo fundo do menu */
+  #loading {
+    position: fixed; inset: 0; z-index: 500; display: none; flex-direction: column; align-items: center; justify-content: center;
+    background:
+      radial-gradient(ellipse at center, rgba(20,12,4,.35) 0%, rgba(12,7,2,.78) 100%),
+      linear-gradient(rgba(20,12,4,.25), rgba(20,12,4,.25)),
+      #1a1109 url('menu-bg.jpg') center / cover no-repeat;
+    color: #f6e7c1; opacity: 1; transition: opacity .5s ease;
+  }
+  #loadBar { width: min(72vw, 380px); height: 16px; margin-top: 26px; border: 2px solid rgba(232,189,78,.65); border-radius: 9px; background: rgba(20,12,4,.75); overflow: hidden; }
+  #loadFill { height: 100%; width: 0; background: linear-gradient(#e8bd4e, #c9962b); transition: width .25s ease; }
+  #loadTxt { margin-top: 12px; font-size: 15px; letter-spacing: .5px; text-shadow: 0 1px 3px rgba(0,0,0,.7); }
   /* Título low poly: fontes em bloco + facetas em degradê de cortes duros + extrusão marrom */
   h1 {
     font-family: 'Bungee', Impact, 'Arial Black', sans-serif; font-weight: 400;
@@ -143,6 +155,12 @@
   <div id="toast"></div>
 </div>
 
+<div id="loading">
+  <h1>TETA TACARO</h1>
+  <div id="loadBar"><div id="loadFill"></div></div>
+  <div id="loadTxt">Carregando…</div>
+</div>
+
 <div id="endScreen">
   <h1 id="endTitle">FIM DE JOGO</h1>
   <div class="subtitle" id="endSubtitle"></div>
@@ -227,6 +245,23 @@ const _lerp = (a, b, t) => a + (b - a) * t;
 const _ease = x => x * x * (3 - 2 * x);
 const _clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 
+/* ---------- TELA DE CARREGAMENTO ---------- */
+const LD = { n: 0, d: 0 };               // texturas/arquivos pendentes (n = pedidos, d = concluídos)
+let onLoadStep = null, onTexStep = null;
+const nextPaint = () => new Promise(r => requestAnimationFrame(() => setTimeout(r, 0)));
+function setLoad(p, txt) {
+  const f = $('loadFill'); if (f) f.style.width = Math.max(0, Math.min(100, Math.round(p))) + '%';
+  const t = $('loadTxt'); if (t && txt) t.textContent = txt;
+}
+function showLoading() { const el = $('loading'); el.style.transition = 'none'; el.style.opacity = 1; el.style.display = 'flex'; void el.offsetWidth; el.style.transition = ''; setLoad(2, 'Preparando…'); }
+async function finishLoading() {         // compila os shaders, desenha alguns quadros e só então tira a tela
+  setLoad(96, 'Finalizando…');
+  try { if (renderer && scene && camera) { renderer.compile(scene, camera); renderer.render(scene, camera); } } catch (e) { console.warn('pré-render', e); }
+  for (let i = 0; i < 3; i++) await nextPaint();
+  setLoad(100, 'Pronto!');
+  const el = $('loading'); el.style.opacity = 0; setTimeout(() => { el.style.display = 'none'; }, 550);
+}
+
 /* ---------- CARREGAMENTO ---------- */
 function loadModels() {
   const files = [
@@ -245,13 +280,14 @@ function loadModels() {
     ['firtree', 'models/firtree.obj', objLoader, g => g],
     ['car', 'models/car.obj', objLoader, g => g]
   ];
-  const imgs = ['car', 'tree'].map(n => new Promise(r => { const im = new Image(); im.onload = () => { texImg[n] = im; r(); }; im.onerror = () => { console.warn('✗ textura', n); r(); }; im.src = 'models/' + n + '_texture.png'; }));
+  const tot = files.length + 2; let nd = 0; const step = () => { nd++; if (onLoadStep) onLoadStep(nd / tot); };
+  const imgs = ['car', 'tree'].map(n => new Promise(r => { const im = new Image(); im.onload = () => { texImg[n] = im; step(); r(); }; im.onerror = () => { console.warn('✗ textura', n); step(); r(); }; im.src = 'models/' + n + '_texture.png'; }));
   return Promise.all(files.map(([name, path, loader, extract]) =>
     new Promise(resolve => {
       loader.load(path,
-        g => { try { models[name] = extract(g); console.log('✓', name); } catch (e) { console.warn('✗', name, e); } resolve(); },
+        g => { try { models[name] = extract(g); console.log('✓', name); } catch (e) { console.warn('✗', name, e); } step(); resolve(); },
         undefined,
-        err => { console.warn('✗', name); resolve(); }
+        err => { console.warn('✗', name); step(); resolve(); }
       );
     })
   ).concat(imgs)).then(() => {
@@ -877,6 +913,12 @@ function box(w, h, d, mat, x, y, z, collide = true, shadow = true) {
 /* ---------- JOGO ---------- */
 async function startGame(solo) {
   if (started) return;
+  showLoading();
+  try { await _startGame(solo); } catch (e) { console.error('startGame', e); }
+  await finishLoading();
+}
+async function _startGame(solo) {
+  if (started) return;
   if (typeof THREE === 'undefined') { alert('Não foi possível carregar o motor 3D (three.js). Verifique a internet.'); return; }
   started = true; isSolo = solo;
   ['menu', 'lobby', 'roomMenu'].forEach(i => $(i).style.display = 'none'); $('fsBtn').style.display = 'none';
@@ -884,7 +926,9 @@ async function startGame(solo) {
   gameDiv.style.display = 'block';
   if (isTouch) { $('joystick-zone').style.display = 'block'; $('atkBtn').style.display = 'block'; $('throwBtn').style.display = 'block'; $('hint').textContent = 'Joystick move · arraste a tela para olhar'; }
 
+  setLoad(5, 'Carregando modelos…'); await nextPaint(); onLoadStep = f => setLoad(5 + f * 30, 'Carregando modelos…');
   try { await loadModels(); } catch(e) { console.warn('Erro carregando modelos', e); }
+  onLoadStep = null; setLoad(36, 'Preparando o mercado…'); await nextPaint();
   console.log('Modelos carregados:', Object.keys(models));
 
   scene = new THREE.Scene();
@@ -912,8 +956,12 @@ async function startGame(solo) {
   Object.assign(sun.shadow.camera, { left: -58, right: 58, top: 58, bottom: -58, near: 1, far: 160 });
   sun.shadow.bias = -.0004; sun.shadow.normalBias = .03; scene.add(sun);
 
+  setLoad(45, 'Montando o mapa…'); await nextPaint();
   await loadMapData();
-  buildMap(); buildExtras(); polish(); nightExtras(); buildCold(); grime(); tryTextures();
+  buildMap(); buildExtras(); polish(); nightExtras(); buildCold(); grime();
+  setLoad(65, 'Carregando texturas…'); await nextPaint();
+  onTexStep = f => setLoad(65 + f * 28, 'Carregando texturas…');
+  await tryTextures(); onTexStep = null; setLoad(94, 'Quase pronto…');
   if (solo) spawnAI(); else { spawnLoot(); lobbyPlayers.forEach(addOther); }
   bindInput(renderer.domElement);
   addEventListener('resize', () => {
@@ -1885,7 +1933,7 @@ function polish(){
   const skyMesh=new THREE.Mesh(skyGeo,skyMat);
   skyMesh.position.y=SKY_R*Math.sin((SKY_HORIZON-.5)*Math.PI);                    // sobe a esfera para o horizonte da foto ficar na altura do chão
   skyMesh.renderOrder=-10;scene.add(skyMesh);
-  new THREE.TextureLoader().load('sky.jpg',t=>{t.anisotropy=8;skyMat.map=t;skyMat.needsUpdate=true;},undefined,()=>console.warn('✗ sky.jpg não encontrado (usando gradiente)'));
+  LD.n++;new THREE.TextureLoader().load('sky.jpg',t=>{t.anisotropy=8;skyMat.map=t;skyMat.needsUpdate=true;LD.d++;},undefined,()=>{console.warn('✗ sky.jpg não encontrado (usando gradiente)');LD.d++;});
   glowT=canvasTex(64,64,g=>{const r=g.createRadialGradient(32,32,0,32,32,32);r.addColorStop(0,'rgba(255,255,255,1)');r.addColorStop(1,'rgba(255,255,255,0)');g.fillStyle=r;g.fillRect(0,0,64,64);},1,1);
   const spr=(c,x,y,z,sc,op)=>{const m=new THREE.Sprite(new THREE.SpriteMaterial({map:glowT,color:c,transparent:true,opacity:op,blending:THREE.AdditiveBlending,depthWrite:false,fog:false}));m.position.set(x,y,z);m.scale.set(sc,sc,1);scene.add(m);};
   for(let x=-35;x<=35;x+=10)for(let z=-35;z<=21;z+=8)spr(0xfff4dc,x,H-.95,z,5.5,.22);
@@ -1998,11 +2046,11 @@ function scaleBoxUV(g, w, h, d, tile) {   // repete a textura a cada 'tile' metr
 function tryTextures() {
   if (!USAR_TEXTURAS) return;
   const L = new THREE.TextureLoader();
-  const ld = (f, E, cb) => L.load(TEX_PASTA + f, t => {
+  const ld = (f, E, cb) => { LD.n++; L.load(TEX_PASTA + f, t => { try {
     t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 8;
     if (E.area && E.tile) t.repeat.set(E.area[0] / E.tile, E.area[1] / E.tile);
     cb(t);
-  }, undefined, () => {});
+  } finally { LD.d++; } }, undefined, () => { LD.d++; }); };
   TEXMATS.forEach(m => {
     const E = TEXTURAS[m.userData.texKey], ext = /(\.\w+)$/;
     ld(E.file, E, t => {
@@ -2014,6 +2062,12 @@ function tryTextures() {
       ld(E.file.replace(ext, '_normal$1'), E, t => { m.normalMap = t; m.bumpMap = null; m.needsUpdate = true; });
       ld(E.file.replace(ext, '_rough$1'), E, t => { m.roughnessMap = t; m.roughness = 1; m.needsUpdate = true; });
     }
+  });
+  // promessa: resolve quando tudo carregou (ou após 20 s, para nunca travar a partida)
+  return new Promise(res => {
+    const t0 = performance.now();
+    const tick = () => { if (onTexStep) onTexStep(LD.n ? LD.d / LD.n : 1); if (LD.d >= LD.n || performance.now() - t0 > 20000) res(); else setTimeout(tick, 100); };
+    tick();
   });
 }
 /* ---------- carros e árvores com textura ---------- */
