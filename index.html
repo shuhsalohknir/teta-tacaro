@@ -105,6 +105,56 @@
   #invBtns { display: flex; gap: 8px; margin: 12px 0; } #invBtns button { flex: 1; padding: 12px; border: none; border-radius: 10px; font-weight: bold; background: #3b82f6; color: #fff; } #invBtns button:disabled { opacity: .4; }
   #recipes { font-size: 12px; color: #cbd5e1; line-height: 1.6; }
   #toast { position: absolute; top: 70px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,.75); color: #fff; padding: 8px 16px; border-radius: 10px; font-size: 14px; z-index: 40; opacity: 0; transition: opacity .3s; pointer-events: none; }
+
+  /* =================== HUD NO TOM DO MENU (marrom · mostarda · creme) =================== */
+  :root { --ouro1: #e8bd4e; --ouro2: #c9962b; --marrom1: #8b6035; --marrom2: #6b4423; --creme: #f6e7c1; --escuro: rgba(35,21,9,.82); --borda: rgba(232,189,78,.55); }
+  #info { background: var(--escuro); color: var(--creme); border: 1px solid rgba(232,189,78,.35); box-shadow: 0 4px 12px rgba(0,0,0,.45); }
+  #info b { color: var(--ouro1); letter-spacing: 2px; }
+  #crosshair { border-color: rgba(246,231,193,.9); box-shadow: 0 0 0 1px rgba(0,0,0,.45), 0 0 6px rgba(232,189,78,.5); }
+
+  /* barra de vida */
+  #healthBar { width: min(60vw, 280px); height: 24px; bottom: 22px; overflow: visible; background: rgba(20,12,4,.82); border: 2px solid var(--borda); border-radius: 7px;
+    box-shadow: 0 4px 10px rgba(0,0,0,.55), inset 0 2px 5px rgba(0,0,0,.7); }
+  #healthBar::before { content: '❤'; position: absolute; left: -17px; top: 50%; transform: translateY(-50%); width: 30px; height: 30px; line-height: 27px; text-align: center; font-size: 15px; color: #7a1f1a;
+    background: linear-gradient(var(--ouro1), var(--ouro2)); border: 2px solid #5a350f; border-radius: 50%; box-shadow: 0 2px 5px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.4); z-index: 2; }
+  #healthFill { position: relative; height: 100%; border-radius: 4px; margin-left: 0; background: linear-gradient(#f3cd62, #e8bd4e 45%, #c9962b); box-shadow: inset 0 1px 0 rgba(255,255,255,.45); transition: width .2s, background .3s; }
+  #healthFill::after { content: ''; position: absolute; left: 4px; right: 4px; top: 3px; height: 4px; border-radius: 3px; background: rgba(255,255,255,.35); }
+  #healthBar.mid #healthFill { background: linear-gradient(#e89a4e, #d2762a 45%, #a85a1c); }
+  #healthBar.low #healthFill { background: linear-gradient(#e0644a, #c13a26 45%, #8f2416); }
+  #healthBar.low { animation: pulsoVida 1s ease-in-out infinite; }
+  @keyframes pulsoVida { 50% { box-shadow: 0 4px 10px rgba(0,0,0,.55), 0 0 14px rgba(220,60,40,.8), inset 0 2px 5px rgba(0,0,0,.7); } }
+  #item { color: var(--ouro1); bottom: 56px; letter-spacing: .5px; text-shadow: 0 1px 3px #000, 0 0 8px rgba(0,0,0,.8); }
+
+  /* botões do toque */
+  #atkBtn, #throwBtn, #invBtn, #pickBtn { font-family: inherit; cursor: pointer; box-shadow: 0 5px 0 rgba(0,0,0,.45), 0 8px 14px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.3); transition: transform .08s, box-shadow .08s, filter .15s; }
+  #atkBtn:active, #throwBtn:active, #invBtn:active, #pickBtn:active { transform: translateY(3px); box-shadow: 0 2px 0 rgba(0,0,0,.45), 0 4px 8px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.3); }
+  #atkBtn { background: linear-gradient(var(--ouro1), var(--ouro2)); color: #3b2410; border: 3px solid #8a5a1f; letter-spacing: 1px; text-shadow: 0 1px 0 rgba(255,255,255,.3); }
+  #throwBtn { background: linear-gradient(var(--marrom1), var(--marrom2)); color: var(--creme); border: 3px solid var(--borda); text-shadow: 0 1px 2px rgba(0,0,0,.6); }
+  #invBtn { background: linear-gradient(var(--marrom1), var(--marrom2)); border: 2px solid var(--borda); color: var(--creme); }
+  #pickBtn { background: linear-gradient(var(--ouro1), var(--ouro2)); color: #3b2410; border: 2px solid #8a5a1f; letter-spacing: 1.5px; text-transform: uppercase; text-shadow: 0 1px 0 rgba(255,255,255,.3); }
+  #joystick-zone { background: rgba(35,21,9,.35); border: 2px solid rgba(232,189,78,.5); box-shadow: inset 0 0 18px rgba(0,0,0,.45); }
+  #joystick-thumb { background: linear-gradient(var(--ouro1), var(--ouro2)); border: 2px solid #8a5a1f; box-shadow: 0 3px 6px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.4); }
+
+  /* inventário */
+  #inv { background: linear-gradient(rgba(48,30,14,.97), rgba(28,17,7,.98)); color: var(--creme); border: 2px solid var(--borda); border-radius: 12px; box-shadow: 0 12px 40px rgba(0,0,0,.7), inset 0 1px 0 rgba(255,255,255,.1); }
+  #inv h3 { color: var(--ouro1); letter-spacing: 1px; font-size: 16px; text-transform: uppercase; text-shadow: 0 2px 4px rgba(0,0,0,.6); }
+  .slot { background: linear-gradient(#4a2e17, #36210f); border: 2px solid var(--marrom2); color: var(--creme); border-radius: 8px; box-shadow: inset 0 1px 0 rgba(255,255,255,.12), 0 2px 4px rgba(0,0,0,.4); }
+  .slot.sel { border-color: var(--ouro1); background: linear-gradient(#7a5230, #5c3a1f); box-shadow: 0 0 10px rgba(232,189,78,.45), inset 0 1px 0 rgba(255,255,255,.2); }
+  .slot.eq { box-shadow: 0 0 0 2px var(--ouro1) inset, 0 2px 4px rgba(0,0,0,.4); }
+  #invBtns button { background: linear-gradient(var(--marrom1), var(--marrom2)); color: var(--creme); border: 1px solid var(--borda); border-bottom: 3px solid rgba(0,0,0,.45); border-radius: 6px; letter-spacing: .5px; text-transform: uppercase; font-size: 11px; min-width: 0; padding: 12px 4px; cursor: pointer; box-shadow: inset 0 1px 0 rgba(255,255,255,.22); }
+  #invBtns button#eqBtn { background: linear-gradient(var(--ouro1), var(--ouro2)); color: #3b2410; border-color: rgba(0,0,0,.35); }
+  #invBtns button:active { transform: translateY(2px); border-bottom-width: 1px; }
+  #recipes { color: #d9c597; }
+
+  /* avisos, temperatura, chefe, fim de jogo */
+  #toast { background: var(--escuro); color: var(--creme); border: 1px solid var(--borda); box-shadow: 0 4px 12px rgba(0,0,0,.5); }
+  #temp { background: rgba(20,12,4,.8); border: 1px solid rgba(232,189,78,.4); box-shadow: 0 3px 8px rgba(0,0,0,.5); }
+  #bossBar { color: var(--creme); }
+  #bossBar b { color: var(--ouro1); letter-spacing: 2px; }
+  #bossHp { background: rgba(20,12,4,.85); border: 2px solid var(--borda); box-shadow: inset 0 2px 4px rgba(0,0,0,.6); }
+  #endScreen { background: radial-gradient(ellipse at center, rgba(40,25,10,.88), rgba(10,6,2,.95)); color: var(--creme); }
+  #endScreen .stats { background: var(--escuro); border: 1px solid rgba(232,189,78,.35); color: var(--creme); }
+  #endScreen .stats b { color: var(--ouro1); }
   #err { display: none; position: absolute; bottom: 0; left: 0; right: 0; background: #7f1d1d; color: #fff; padding: 8px; font-size: 12px; z-index: 999; }
 </style>
 </head>
@@ -244,6 +294,9 @@ const darken = (hex, t) => new THREE.Color(hex).lerp(new THREE.Color(0x000000), 
 const _lerp = (a, b, t) => a + (b - a) * t;
 const _ease = x => x * x * (3 - 2 * x);
 const _clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+
+/* cor da barra de vida: mostarda → laranja → vermelho */
+function hpClass() { const b = $('healthBar'); if (b) { b.classList.toggle('low', health <= 30); b.classList.toggle('mid', health > 30 && health <= 60); } }
 
 /* ---------- TELA DE CARREGAMENTO ---------- */
 const LD = { n: 0, d: 0 };               // texturas/arquivos pendentes (n = pedidos, d = concluídos)
@@ -1268,7 +1321,7 @@ function hurtPlayerNet(id, dmg) {   // o servidor valida e devolve 'playerHit' p
   if (socket) socket.emit('damage', { room: currentRoom, target: id, amount: Math.round(dmg) });
 }
 function onlineHurt(h) {            // dano sofrido (vida vem do servidor)
-  health = Math.max(0, h); $('healthFill').style.width = health + '%';
+  health = Math.max(0, h); $('healthFill').style.width = health + '%'; hpClass();
   $('hurt').style.opacity = 1; setTimeout(() => $('hurt').style.opacity = 0, 200); shake = 1; beep(90, .15, 'sawtooth');
 }
 function projImpact(p) {
@@ -1628,7 +1681,7 @@ function attack(){
   },150);
 }
 function hurt(n){
-  health=Math.max(0,health-n);$('healthFill').style.width=health+'%';
+  health=Math.max(0,health-n);$('healthFill').style.width=health+'%';hpClass();
   $('hurt').style.opacity=1;setTimeout(()=>$('hurt').style.opacity=0,200);shake=1;beep(90,.15,'sawtooth');
   if(health<=0)endGame(false);
 }
