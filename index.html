@@ -71,9 +71,9 @@
   #lobby h1 { margin-top: auto; }
   #lobby .menu-btn:last-child { margin-bottom: auto; }
   #charPick { display: flex; gap: 10px; margin: 6px 0 4px; flex-wrap: wrap; justify-content: center; }
-  .charCard { width: 104px; padding: 10px 6px; border-radius: 8px; cursor: pointer; text-align: center; color: #f6e7c1; font-size: 13px; font-weight: bold;
+  .charCard { width: 110px; padding: 8px 6px; border-radius: 8px; cursor: pointer; text-align: center; color: #f6e7c1; font-size: 13px; font-weight: bold;
     background: linear-gradient(#4a2e17, #36210f); border: 2px solid #6b4423; box-shadow: 0 3px 8px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.12); }
-  .charCard .ico { font-size: 34px; line-height: 1.2; display: block; }
+  .charCard canvas { display: block; margin: 0 auto 4px; width: 90px; height: 90px; border-radius: 6px; background: rgba(0,0,0,.3); }
   .charCard.sel { border-color: #e8bd4e; background: linear-gradient(#7a5230, #5c3a1f); box-shadow: 0 0 12px rgba(232,189,78,.55); }
   .lobbyHd { font-size: 12px; letter-spacing: 2px; text-transform: uppercase; color: #e9d9b4; margin-top: 12px; }
   #teamsBox { display: flex; gap: 12px; margin: 10px 0; flex-wrap: wrap; justify-content: center; }
@@ -118,7 +118,7 @@
   #bossHp { height: 10px; margin: 4px 0 2px; background: rgba(0,0,0,.6); border: 2px solid #bae6fd; border-radius: 6px; overflow: hidden; }
   #bossFill { height: 100%; width: 100%; background: linear-gradient(#7dd3fc, #0284c7); }
   #pickBtn { position: absolute; bottom: 90px; left: 50%; transform: translateX(-50%); padding: 12px 22px; border: 2px solid #fde047; border-radius: 12px; background: rgba(0,0,0,.75); color: #fde047; font-weight: bold; font-size: 15px; z-index: 35; display: none; }
-  #invBtn { position: absolute; top: 10px; right: 10px; width: 48px; height: 48px; border-radius: 12px; border: 2px solid #fff; background: rgba(0,0,0,.6); font-size: 24px; z-index: 35; }
+  #invBtn { position: absolute; bottom: 155px; right: 30px; width: 48px; height: 48px; border-radius: 12px; border: 2px solid #fff; background: rgba(0,0,0,.6); font-size: 24px; z-index: 35; }
   #inv { display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: min(92vw, 420px); max-height: 90vh; overflow: auto; background: rgba(15,23,42,.96); color: #fff; border: 2px solid #475569; border-radius: 16px; padding: 16px; z-index: 60; }
   #inv h3 { margin: 0 0 10px; } #slots { display: grid; grid-template-columns: repeat(3,1fr); gap: 8px; }
   .slot { padding: 12px 4px; min-height: 64px; border-radius: 10px; border: 2px solid #475569; background: #1e293b; color: #fff; font-size: 13px; }
@@ -346,6 +346,8 @@ async function finishLoading() {         // compila os shaders, desenha alguns q
 
 /* ---------- CARREGAMENTO ---------- */
 function loadModels() {
+  if (models.businessman && models.adventurer && models.witch && models.goblin) return Promise.resolve();
+  if (loadModels._p) return loadModels._p;
   const files = [
     ['businessman', 'models/businessman.glb', gltfLoader, g => { clips.businessman = g.animations || []; return g.scene; }],
     ['adventurer', 'models/adventurer.glb', gltfLoader, g => { clips.adventurer = g.animations || []; return g.scene; }],
@@ -363,7 +365,7 @@ function loadModels() {
   ];
   const tot = files.length + 2; let nd = 0; const step = () => { nd++; if (onLoadStep) onLoadStep(nd / tot); };
   const imgs = ['car', 'tree'].map(n => new Promise(r => { const im = new Image(); im.onload = () => { texImg[n] = im; step(); r(); }; im.onerror = () => { console.warn('✗ textura', n); step(); r(); }; im.src = 'models/' + n + '_texture.png'; }));
-  return Promise.all(files.map(([name, path, loader, extract]) =>
+  loadModels._p = Promise.all(files.map(([name, path, loader, extract]) =>
     new Promise(resolve => {
       loader.load(path,
         g => { try { models[name] = extract(g); console.log('✓', name); } catch (e) { console.warn('✗', name, e); } step(); resolve(); },
@@ -374,6 +376,7 @@ function loadModels() {
   ).concat(imgs)).then(() => {
     ['businessman', 'adventurer', 'witch'].forEach(n => { try { prepareClips(n); } catch (e) { console.warn('clips', n, e); } });
   });
+  return loadModels._p;
 }
 
 /* goblin.obj vem com os braços abertos em T (±3 de largura para 5 de altura). Giramos os braços para baixo, com transição suave no ombro. */
@@ -977,14 +980,66 @@ function roomInfo() {
 const CHAR_INFO = { businessman: { n: 'Empresário', e: '💼' }, adventurer: { n: 'Aventureiro', e: '🧭' }, witch: { n: 'Bruxa', e: '🧙‍♀️' } };
 const TEAM_COL = [0x3b82f6, 0xef4444], TEAM_NAME = ['Azul', 'Vermelho'];
 let myChar = 'businessman', myTeam = 0, teamMode = false;
+let charPreviews = [];
+let modelsLoading = null;
+function ensureModelsForLobby() {
+  if (models.businessman && models.adventurer && models.witch) return Promise.resolve();
+  if (modelsLoading) return modelsLoading;
+  modelsLoading = loadModels().then(() => { modelsLoading = null; }).catch(() => { modelsLoading = null; });
+  return modelsLoading;
+}
 function renderCharPick() {
   const box = $('charPick'); box.innerHTML = '';
+  charPreviews.forEach(p => { try { p.dispose && p.dispose(); } catch(e){} });
+  charPreviews = [];
   Object.keys(CHAR_INFO).forEach(k => {
     const d = document.createElement('div'); d.className = 'charCard' + (k === myChar ? ' sel' : '');
-    d.innerHTML = '<span class="ico">' + CHAR_INFO[k].e + '</span>' + CHAR_INFO[k].n;
+    const cv = document.createElement('canvas'); cv.width = 180; cv.height = 180;
+    d.appendChild(cv);
+    const nm = document.createElement('div'); nm.textContent = CHAR_INFO[k].n; d.appendChild(nm);
     d.onclick = () => { myChar = k; renderCharPick(); if (socket && currentRoom) socket.emit('setChar', { room: currentRoom, char: k }); };
     box.appendChild(d);
+    if (models[k]) setupCharPreview(cv, k);
+    else {
+      const ctx = cv.getContext('2d');
+      ctx.fillStyle = '#3b2410'; ctx.fillRect(0,0,180,180);
+      ctx.fillStyle = '#e8bd4e'; ctx.font = '14px Arial'; ctx.textAlign = 'center'; ctx.fillText('Carregando…', 90, 90);
+    }
   });
+  if (!models.businessman) ensureModelsForLobby().then(() => { if ($('lobby').style.display !== 'none') renderCharPick(); });
+}
+function setupCharPreview(canvas, name) {
+  try {
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+    renderer.setPixelRatio(Math.min(2, devicePixelRatio));
+    renderer.setSize(180, 180, false);
+    const scene = new THREE.Scene();
+    scene.background = null;
+    const camera = new THREE.PerspectiveCamera(28, 1, 0.1, 10);
+    camera.position.set(0, 1.1, 3.2);
+    const amb = new THREE.AmbientLight(0xffffff, 0.7); scene.add(amb);
+    const dir = new THREE.DirectionalLight(0xffffff, 0.9); dir.position.set(2, 4, 3); scene.add(dir);
+    const shirt = 0x8b6035;
+    let model;
+    try { model = dress(name, shirt, 0, {}); } catch(e) { model = fallbackModel(shirt); }
+    const S = standardize(model, 1.7, name);
+    scene.add(S.root);
+    S.root.position.y = 0;
+    let animId;
+    const render = () => {
+      S.root.rotation.y += 0.012;
+      renderer.render(scene, camera);
+      animId = requestAnimationFrame(render);
+    };
+    render();
+    charPreviews.push({
+      dispose() {
+        cancelAnimationFrame(animId);
+        renderer.dispose();
+        scene.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) (Array.isArray(o.material)?o.material:[o.material]).forEach(m=>m.dispose&&m.dispose()); });
+      }
+    });
+  } catch(e) { console.warn('preview', name, e); }
 }
 function switchTeam() { if (socket && currentRoom) socket.emit('setTeam', { room: currentRoom, team: myTeam === 0 ? 1 : 0 }); }
 function isAlly(id) {
@@ -1158,6 +1213,7 @@ async function _startGame(solo) {
   if (typeof THREE === 'undefined') { alert('Não foi possível carregar o motor 3D (three.js). Verifique a internet.'); return; }
   started = true; isSolo = solo;
   ['menu', 'lobby', 'roomMenu'].forEach(i => $(i).style.display = 'none'); $('fsBtn').style.display = 'none';
+  charPreviews.forEach(p => { try { p.dispose && p.dispose(); } catch(e){} }); charPreviews = [];
   const gameDiv = $('game');
   gameDiv.style.display = 'block';
   if (isTouch) { $('joystick-zone').style.display = 'block'; $('atkBtn').style.display = 'block'; $('throwBtn').style.display = 'block'; $('hint').textContent = 'Joystick move · arraste a tela para olhar'; }
