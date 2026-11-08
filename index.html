@@ -59,6 +59,9 @@
   #fsBtn { position: fixed; top: 14px; right: 14px; z-index: 300; padding: 10px 16px; font-size: 13px; font-weight: bold; letter-spacing: 1.5px; text-transform: uppercase;
     color: #f6e7c1; background: linear-gradient(#8b6035, #6b4423); border: 1px solid rgba(232,189,78,.55); border-bottom: 3px solid rgba(0,0,0,.4); border-radius: 6px; cursor: pointer;
     box-shadow: 0 4px 12px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.25); text-shadow: 0 1px 2px rgba(0,0,0,.5); }
+  #musicBtn { position: fixed; top: 14px; right: 14px; z-index: 300; width: 42px; height: 42px; border-radius: 50%; display: none; align-items: center; justify-content: center; font-size: 20px; line-height: 1; cursor: pointer;
+    background: linear-gradient(var(--ouro1, #f3cd62), var(--ouro2, #c9962b)); border: 2px solid #8a5a1f; color: #3b2410; box-shadow: 0 3px 8px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.4); padding: 0; }
+  #musicBtn:active { transform: translateY(2px); }
   #fsBtn:hover { filter: brightness(1.12); } #fsBtn:active { transform: translateY(2px); border-bottom-width: 1px; }
   input { padding: 12px; font-size: 16px; border-radius: 6px; border: 2px solid #8b6035; background: #f6ecd2; color: #3b2410; margin: 8px; width: 260px; }
   #playerList { background: rgba(35,21,9,.78); border: 1px solid rgba(232,189,78,.35); padding: 20px; border-radius: 8px; min-width: 280px; margin: 15px 0; }
@@ -160,6 +163,7 @@
 </head>
 <body>
 <button id="fsBtn" type="button" style="display:none">⛶ Tela cheia</button>
+<button id="musicBtn" type="button" title="Ligar/desligar a música">🔊</button>
 <div id="menu">
   <h1>TETA TACARO</h1>
   <div class="subtitle">Battle Royale de Comédia</div>
@@ -1016,12 +1020,52 @@ function box(w, h, d, mat, x, y, z, collide = true, shadow = true) {
   if (collide) colliders.push({ x1: x - w / 2, x2: x + w / 2, z1: z - d / 2, z2: z + d / 2 });
   return m;
 }
+/* ---------- MÚSICA DE PROPAGANDA DO MERCADO ----------
+   Só toca durante a partida (começa quando o jogo abre, para quando acaba). Troque o nome do arquivo abaixo se precisar. */
+const MUSICA_ARQUIVO = 'audio/propaganda.mp3';
+const MUSICA_VOL = .35;                       // 0 a 1
+const musica = new Audio(MUSICA_ARQUIVO);
+musica.loop = true; musica.preload = 'auto'; musica.volume = MUSICA_VOL;
+let musicaOn = true, musicaRodando = false;
+try { musicaOn = localStorage.getItem('tt_musica') !== '0'; } catch (e) {}
+function musicaIcone() { const b = $('musicBtn'); if (b) b.textContent = musicaOn ? '🔊' : '🔇'; }
+function tocarMusica() {
+  musicaRodando = true; musicaIcone();
+  const b = $('musicBtn'); if (b) b.style.display = 'flex';
+  if (!musicaOn) return;
+  musica.volume = MUSICA_VOL;
+  const p = musica.play();
+  if (p && p.catch) p.catch(() => {                 // o navegador bloqueou: tenta de novo no primeiro toque/tecla
+    const retry = () => { if (musicaRodando && musicaOn) musica.play().catch(() => {}); removeEventListener('pointerdown', retry); removeEventListener('keydown', retry); };
+    addEventListener('pointerdown', retry); addEventListener('keydown', retry);
+  });
+}
+function pararMusica() {                            // fim de jogo: abaixa devagar e para
+  musicaRodando = false;
+  const b = $('musicBtn'); if (b) b.style.display = 'none';
+  const iv = setInterval(() => { musica.volume = Math.max(0, musica.volume - .04); if (musica.volume <= .001) { clearInterval(iv); musica.pause(); } }, 60);
+}
+(function () {
+  const b = $('musicBtn'); if (!b) return;
+  const tog = e => {
+    e.preventDefault(); e.stopPropagation();
+    musicaOn = !musicaOn; try { localStorage.setItem('tt_musica', musicaOn ? '1' : '0'); } catch (er) {}
+    musicaIcone(); if (musicaOn) musica.play().catch(() => {}); else musica.pause();
+  };
+  b.addEventListener('click', tog); b.addEventListener('touchstart', e => e.stopPropagation(), { passive: true });
+  musicaIcone();
+  document.addEventListener('visibilitychange', () => {   // aba/app em segundo plano: pausa
+    if (document.hidden) musica.pause(); else if (musicaRodando && musicaOn) musica.play().catch(() => {});
+  });
+})();
+
 /* ---------- JOGO ---------- */
 async function startGame(solo) {
   if (started) return;
   showLoading();
   try { await _startGame(solo); } catch (e) { console.error('startGame', e); }
   await finishLoading();
+  if (started) tocarMusica();          // música só depois que o jogo abriu
 }
 async function _startGame(solo) {
   if (started) return;
@@ -1127,7 +1171,7 @@ function bindInput(cv) {
 }
 
 function endGame(won) {
-  if (gameOver) return; gameOver = true;
+  if (gameOver) return; gameOver = true; pararMusica();
   $('endTitle').textContent = won ? 'VITÓRIA!' : 'ELIMINADO';
   $('endSubtitle').textContent = won ? 'Você venceu o mercado!' : 'Você foi eliminado';
   $('statEnemies').textContent = kills; $('endScreen').style.display = 'flex';
@@ -1612,6 +1656,7 @@ const COLD_FOG = new THREE.Color(0x24465f);
 function coldUpdate(dt, t) {
   const T = tempAt(camera.position.x, camera.position.z), tg = T ? _clamp((15 - T.t) / 35, 0, 1) : 0;
   coldK += (tg - coldK) * Math.min(1, dt * 3);
+  if (musicaRodando && musicaOn) musica.volume = MUSICA_VOL * (1 - .55 * coldK);   // mais baixa dentro da câmara fria
   const te = $('temp');
   if (T) { te.style.display = 'block'; te.textContent = '🌡️ ' + Math.round(T.t) + '°C · ' + T.n; te.style.color = T.t < 0 ? '#93c5fd' : T.t < 10 ? '#bae6fd' : '#e0f2fe'; }
   else te.style.display = 'none';
