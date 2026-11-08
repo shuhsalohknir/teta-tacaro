@@ -280,9 +280,12 @@ const objLoader = new THREE.OBJLoader();
    bone  = esqueleto Mixamo sem animação gravada: movemos os ossos por código (guy)
    puppet= malha sem esqueleto: balanço/inclinação do corpo todo (male, vrgirl)
    Edite CHAR_POOL para escolher/ordenar os personagens. */
-const CHAR_POOL = ['man', 'woman', 'guy', 'vrgirl', 'vrgirl2', 'male'];
-const ACTOR_KIND = { man: 'clip', woman: 'clip', guy: 'bone', male: 'puppet', vrgirl: 'puppet', vrgirl2: 'puppet' };
-const RIGGED = ['man', 'woman', 'guy'];
+const CHAR_POOL = ['businessman', 'adventurer', 'witch'];   // personagens do jogo (o goblin é só o Homem Congelado)
+const ACTOR_KIND = { man: 'clip', woman: 'clip', guy: 'bone', male: 'puppet', vrgirl: 'puppet', vrgirl2: 'puppet',
+  businessman: 'clip', adventurer: 'clip', witch: 'clip', goblin: 'puppet' };
+/* modelos Quaternius: olham para +Z, esqueleto compartilhado; hs = ajuste de altura (o osso da cabeça fica abaixo do topo da cabeça/chapéu) */
+const Q_MODELS = { businessman: { hs: .84 }, adventurer: { hs: .84 }, witch: { hs: .80 } };
+const RIGGED = ['man', 'woman', 'guy', 'businessman', 'adventurer', 'witch'];
 const SKINS = [0xf1c6a0, 0xd9a67a, 0xb97a50, 0x8d5a3a, 0xe8b894];
 const HAIRS = [0x2b1a10, 0x6b4423, 0x111111, 0xb5651d, 0x4a3320];
 const PANTS = [0x1e3a8a, 0x374151, 0x3f3f46, 0x14532d, 0x4a2c1d];
@@ -318,11 +321,10 @@ async function finishLoading() {         // compila os shaders, desenha alguns q
 /* ---------- CARREGAMENTO ---------- */
 function loadModels() {
   const files = [
-    ['guy', 'models/guy.glb', gltfLoader, g => g.scene],
-    ['man', 'models/man.fbx', fbxLoader, g => { clips.man = g.animations || []; return g; }],
-    ['woman', 'models/woman.fbx', fbxLoader, g => { clips.woman = g.animations || []; return g; }],
-    ['male', 'models/male.obj', objLoader, g => g],
-    ['vrgirl', 'models/vrgirl.obj', objLoader, g => g],
+    ['businessman', 'models/businessman.glb', gltfLoader, g => { clips.businessman = g.animations || []; return g.scene; }],
+    ['adventurer', 'models/adventurer.glb', gltfLoader, g => { clips.adventurer = g.animations || []; return g.scene; }],
+    ['witch', 'models/witch.glb', gltfLoader, g => { clips.witch = g.animations || []; return g.scene; }],
+    ['goblin', 'models/goblin.obj', objLoader, g => { try { bendGoblinArms(g); } catch (e) { console.warn('goblin braços', e); } return g; }],
     ['broom', 'models/broom.obj', objLoader, g => g],
     ['bottle', 'models/bottle.obj', objLoader, g => g],
     ['bread', 'models/bread.obj', objLoader, g => g],
@@ -344,11 +346,29 @@ function loadModels() {
       );
     })
   ).concat(imgs)).then(() => {
-    try { splitVRGirl(); } catch (e) { console.warn('vrgirl split', e); }
-    ['man', 'woman'].forEach(n => { try { prepareClips(n); } catch (e) { console.warn('clips', n, e); } });
+    ['businessman', 'adventurer', 'witch'].forEach(n => { try { prepareClips(n); } catch (e) { console.warn('clips', n, e); } });
   });
 }
 
+/* goblin.obj vem com os braços abertos em T (±3 de largura para 5 de altura). Giramos os braços para baixo, com transição suave no ombro. */
+function bendGoblinArms(root) {
+  const ANG = 78 * Math.PI / 180, PX = .8, PY = 3.45;
+  root.traverse(o => {
+    if (!o.isMesh) return;
+    const g = o.geometry, P = g.attributes.position;
+    for (let i = 0; i < P.count; i++) {
+      const x = P.getX(i), y = P.getY(i);
+      if (y < 2.6 || y > 4.15) continue;                        // só a faixa dos braços (orelhas e cabeça ficam acima)
+      const ax = Math.abs(x); if (ax <= PX) continue;
+      const t = _clamp((ax - PX) / .55, 0, 1), a = -ANG * _ease(t);
+      const dx = x - Math.sign(x) * PX, dy = y - PY, c = Math.cos(a), sn = Math.sin(a);
+      // gira em torno do ombro (sx espelha o lado esquerdo)
+      const sx = Math.sign(x), rx = (sx * dx) * c - dy * sn, ry = (sx * dx) * sn + dy * c;
+      P.setXYZ(i, sx * (PX + rx), PY + ry, P.getZ(i));
+    }
+    P.needsUpdate = true; g.computeBoundingBox(); g.computeBoundingSphere();
+  });
+}
 /* vrgirl.obj contém DUAS meninas lado a lado (esquerda com visor, direita com headset). Separamos em duas. */
 function splitVRGirl() {
   const src = models.vrgirl; if (!src) return;
@@ -396,6 +416,21 @@ function recolor(root, table) {
       const s = table[nk(m && m.name)];
       if (s !== undefined) return matFrom(s, sk);
       return table['*'] !== undefined ? matFrom(table['*'], sk) : m;
+    };
+    c.material = Array.isArray(c.material) ? c.material.map(swap) : swap(c.material);
+    c.castShadow = c.receiveShadow = true;
+    if (sk) c.frustumCulled = false;
+  });
+}
+/* troca TODOS os materiais por cópias próprias (o flash de dano não vaza entre personagens); o que não está na tabela mantém a cor do arquivo */
+function recolorQ(root, table) {
+  root.traverse(c => {
+    if (!c.isMesh) return;
+    const sk = !!c.isSkinnedMesh;
+    const swap = m => {
+      let sp = table[nk(m && m.name)];
+      if (sp === undefined) sp = (m && m.color) ? m.color.clone().convertLinearToSRGB().getHex() : 0xaaaaaa;
+      return matFrom(sp, sk);
     };
     c.material = Array.isArray(c.material) ? c.material.map(swap) : swap(c.material);
     c.castShadow = c.receiveShadow = true;
@@ -533,6 +568,23 @@ function dress(name, shirt, idx, o) {
       m = THREE.SkeletonUtils.clone(models.woman);
       paintBody(m, 'woman', { skin: skin, hair: hair, shirt: sh, pants: pants, shoe: 0x1f2937 });
       break;
+    case 'businessman':
+      m = THREE.SkeletonUtils.clone(models.businessman);
+      recolorQ(m, { suit: sh, tie: darken(sh, .45), white: 0xf1f5f9, black: 0x1a1a1a, skin: { c: skin, r: .6 }, hair: hair, eyebrows: darken(hair, .2), eye: 0x111111 });
+      break;
+    case 'adventurer':
+      m = THREE.SkeletonUtils.clone(models.adventurer);
+      recolorQ(m, { green: sh, lightgreen: lighten(sh, .4), grey: 0x6b7280, brown: 0x7a5230, brown2: 0x4a2e17, black: 0x1a1a1a, gold: 0xd4a017, skin: { c: skin, r: .6 }, hair: hair, eyebrows: darken(hair, .2), eye: 0x111111 });
+      break;
+    case 'witch':
+      m = THREE.SkeletonUtils.clone(models.witch);
+      recolorQ(m, { purple: sh, gold: 0xd4a017, brown: 0x5a3a1e, brown2: 0x4a2e17, hairblack: hair, skin: { c: skin, r: .6 } });
+      break;
+    case 'goblin':        // Homem Congelado: goblin de pele gelada (cores do MTL clareadas, que no original ficam quase pretas)
+      m = models.goblin.clone(true);
+      recolor(m, { material003: { c: o.skin !== undefined ? o.skin : 0x6fae3c, r: .55 }, material002: 0xff2a1a, material004: 0x1a1313, material005: 0x8a1c1c,
+                   material006: o.pants !== undefined ? o.pants : 0x5b4020, material007: 0xd6b21a, material: 0xe8e0b8 });
+      break;
     case 'male':
       m = models.male.clone(true);
       paintBody(m, 'male', { skin: skin, hair: hair, shirt: sh, pants: pants, shoe: 0x1f2937 });
@@ -557,14 +609,15 @@ function fallbackModel(shirt) {
   return g;
 }
 /* root > pivot > fix > model.  fix gira o modelo para a "frente" do jogo (-Z), escala para ~1,7 m e põe os pés em y=0. */
-function standardize(model, height) {
+function standardize(model, height, name) {
+  const Q = Q_MODELS[name];
   const root = new THREE.Group(), pivot = new THREE.Group(), fix = new THREE.Group();
   root.add(pivot); pivot.add(fix); fix.add(model);
   root.updateMatrixWorld(true);
   const bones = []; model.traverse(o => { if (o.isBone) bones.push(o); });
   const rigged = bones.length > 10, V = new THREE.Vector3();
   let flip = Math.PI;                       // padrão: modelos olham para +Z
-  if (rigged) {                             // descobre a frente pela direção pé → dedos
+  if (rigged && !Q) {                       // descobre a frente pela direção pé → dedos
     const foot = bones.find(b => /(leftfoot|footl)$/.test(nk(b.name)));
     const toe = foot && (foot.children.find(c => c.isBone) || foot.children[0]);
     if (foot && toe) {
@@ -582,9 +635,9 @@ function standardize(model, height) {
     return { mn, mx };
   };
   let M = measure();
-  fix.scale.setScalar((height || 1.7) / Math.max(1e-6, (M.mx.y - M.mn.y) * (rigged ? 1.03 : 1)));
+  fix.scale.setScalar((height || 1.7) * (Q ? Q.hs : 1) / Math.max(1e-6, (M.mx.y - M.mn.y) * (rigged ? 1.03 : 1)));
   M = measure();
-  fix.position.set(-(M.mn.x + M.mx.x) / 2, -M.mn.y - (rigged ? .02 : 0), -(M.mn.z + M.mx.z) / 2);
+  fix.position.set(-(M.mn.x + M.mx.x) / 2, -M.mn.y - (rigged && !Q ? .02 : 0), -(M.mn.z + M.mx.z) / 2);
   root.updateMatrixWorld(true);
   return { root, pivot, fix, model, bones };
 }
@@ -772,7 +825,7 @@ class ClipActor extends ActorBase {
       return a;
     };
     this.act = { idle: mk(lib.idle), walk: mk(lib.walk) || mk(lib.run), run: mk(lib.run) || mk(lib.walk), punch: mk(lib.punch, true), slash: mk(lib.slash, true), death: mk(lib.death, true) };
-    this.hand = this.bones.find(b => /(righthand|palmr|middlehandr)$/.test(nk(b.name)));
+    this.hand = this.bones.find(b => /(righthand|palmr|middlehandr|wristr)$/.test(nk(b.name)));
     this.cur = null;
     this.setAct(this.act.idle, 0);
     if (this.cur) this.cur.time = Math.random() * this.cur.getClip().duration;
@@ -826,7 +879,7 @@ function createActor(name, shirt, opts) {
   if (name === 'fallback') { body = fallbackModel(shirt); kind = 'puppet'; }
   else body = dress(name, shirt, idx, opts);
   if (kind === 'clip' && !(clipLib[name] && clipLib[name].idle && (clipLib[name].walk || clipLib[name].run))) kind = 'puppet';
-  const S = standardize(body, opts && opts.height);
+  const S = standardize(body, opts && opts.height, name);
   const actor = kind === 'clip' ? new ClipActor(name, S, idx) : kind === 'bone' ? new BoneActor(name, S, idx) : new PuppetActor(name, S, idx);
   ACTORS.push(actor);
   console.log('personagem', name, '→', kind);
@@ -1002,7 +1055,7 @@ async function _startGame(solo) {
   renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   $('game').appendChild(renderer.domElement); makeEnv();
 
-  scene.add(new THREE.HemisphereLight(0xfff1dc, 0x4a3f33, .45));
+  scene.add(new THREE.HemisphereLight(0xffeec4, 0x4a3f33, .45));
   const sun = new THREE.DirectionalLight(0x8fa8ff, .22);
   sun.position.set(20, 45, 30); sun.castShadow = true;
   sun.shadow.mapSize.set(isTouch ? 1024 : 2048, isTouch ? 1024 : 2048);
@@ -1398,6 +1451,50 @@ let monster = null, coldK = 0, coldBase = null, strips = [], lastImmune = 0, pen
 const inFreezer = (x, z) => x > FREEZER.x1 && x < FREEZER.x2 && z > FREEZER.z1 && z < FREEZER.z2;
 const amHost = () => isSolo || hostId === myId;
 
+/* ---------- SOMBRAS DE LUZ + PARTÍCULAS DE FRIO ---------- */
+const SOMBRA_LUZ = true;           // false = desliga as sombras das luzes de ponto (mais FPS)
+function shadowLight(l, size, far) {
+  if (!SOMBRA_LUZ) return;
+  l.castShadow = true;
+  l.shadow.mapSize.set(size, size);
+  l.shadow.camera.near = .3; l.shadow.camera.far = far;
+  l.shadow.bias = -.002; l.shadow.normalBias = .04; l.shadow.radius = 3;
+}
+let coldFx = [];
+function buildColdParticles() {
+  const X1 = -67.4, X2 = -48.6, Z1 = -63.4, Z2 = -46.6, Y2 = HC - .25;
+  const mk = (n, size, op, color, y0, y1, vmin, vmax, sway) => {
+    const pos = new Float32Array(n * 3), ph = new Float32Array(n), sp = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      pos[i*3] = _lerp(X1, X2, Math.random()); pos[i*3+1] = _lerp(y0, y1, Math.random()); pos[i*3+2] = _lerp(Z1, Z2, Math.random());
+      ph[i] = Math.random() * 6.283; sp[i] = _lerp(vmin, vmax, Math.random());
+    }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    const m = new THREE.PointsMaterial({ map: glowT, color, size, transparent: true, opacity: op, depthWrite: false, sizeAttenuation: true });
+    const pts = new THREE.Points(g, m); pts.frustumCulled = false; pts.visible = false; pts.renderOrder = 5; scene.add(pts);
+    coldFx.push({ pts, pos, ph, sp, y0, y1, sway, X1, X2, Z1, Z2 });
+  };
+  mk(isTouch ? 130 : 280, .09, .9,  0xffffff, .1, Y2, .05, .18, .12);   // flocos / cristais caindo devagar
+  mk(isTouch ? 14 : 30,   2.6, .10, 0xd6efff, .2, 1.8, -.03, .03, .35); // neblina gelada rente ao chão
+}
+function coldParticlesUpdate(dt, t) {
+  const p = camera.position, vis = p.x < -44 && p.z < -38;   // só anima quando o jogador está perto da câmara fria
+  for (const f of coldFx) {
+    f.pts.visible = vis; if (!vis) continue;
+    const a = f.pos, n = f.ph.length;
+    for (let i = 0; i < n; i++) {
+      const k = i * 3, w = f.ph[i];
+      a[k+1] -= f.sp[i] * dt;
+      a[k]   += Math.sin(t * .6 + w) * f.sway * dt;
+      a[k+2] += Math.cos(t * .5 + w) * f.sway * dt;
+      if (a[k+1] < f.y0) a[k+1] = f.y1; else if (a[k+1] > f.y1) a[k+1] = f.y0;
+      if (a[k] < f.X1) a[k] = f.X2; else if (a[k] > f.X2) a[k] = f.X1;
+      if (a[k+2] < f.Z1) a[k+2] = f.Z2; else if (a[k+2] > f.Z2) a[k+2] = f.Z1;
+    }
+    f.pts.geometry.attributes.position.needsUpdate = true;
+  }
+}
+
 function buildCold() {
   const panelRes = tx('camara_parede_resfriados', std(0xdbe9f4, { roughness: .55 })), panelCong = tx('camara_parede_congelados', std(0xc3dff2, { roughness: .45 })), roofM = tx('camara_teto', std(0xe5edf3, { roughness: .6 }));
   const metal = tx('camara_estante_inox', std(0x7b8794, { metalness: .6, roughness: .4 }));
@@ -1494,6 +1591,9 @@ function buildCold() {
   pl(-58, 3.6, -32, 0xdff1ff, .9, 20); pl(-58, 3.6, -41, 0xdff1ff, .8, 18);
   flickLamp(-58, HC - .2, -51, 0x9fd0ff, .9, 0); flickLamp(-58, HC - .2, -60, 0x7fb8ff, .8, 0);
   if (!isTouch) pl(-44, 3.5, -31, 0xcfe8ff, .6, 12);
+  // sombras dentro das câmaras (as luzes do congelado são as 2 últimas de 'flick')
+  flick.slice(-2).forEach((q, i) => { if (!isTouch || i === 0) shadowLight(q.l, isTouch ? 512 : 1024, 22); });
+  buildColdParticles();
   // ---- estado do frio ----
   coldBase = { c: scene.fog.color.clone(), n: scene.fog.near, f: scene.fog.far };
   spawnMonster();
@@ -1517,6 +1617,7 @@ function coldUpdate(dt, t) {
   else te.style.display = 'none';
   $('frost').style.opacity = (coldK * .9).toFixed(2);
   if (coldBase) { scene.fog.color.copy(coldBase.c).lerp(COLD_FOG, coldK * .9); scene.fog.near = _lerp(coldBase.n, 6, coldK); scene.fog.far = _lerp(coldBase.f, 55, coldK); }
+  coldParticlesUpdate(dt, t);
   strips.forEach(s => { s.m.rotation.z = Math.sin(t * 1.3 + s.ph) * .03; });
   monsterUpdate(dt, t);
 }
@@ -1524,9 +1625,9 @@ function coldUpdate(dt, t) {
 /* ---------- HOMEM CONGELADO ---------- */
 function spawnMonster() {
   const cc = charCounter;                       // não bagunça a distribuição de personagens das IAs
-  const nm = ['man', 'guy', 'woman', 'male'].find(n => models[n] && (!RIGGED.includes(n) || THREE.SkeletonUtils)) || 'fallback';
+  const nm = ['goblin', 'businessman', 'adventurer', 'witch'].find(n => models[n] && (!RIGGED.includes(n) || THREE.SkeletonUtils)) || 'fallback';
   let actor;
-  try { actor = createActor(nm, 0xcfe8ff, { skin: 0x9fd0ea, hair: 0xe0f2fe, pants: 0x1e3a5f, height: 2.15 }); }
+  try { actor = createActor(nm, 0xcfe8ff, { skin: 0x8fd6e0, hair: 0xe0f2fe, pants: 0x2b4d78, height: 2.15 }); }
   catch (e) { console.warn('monstro', e); charCounter = cc; return; }
   charCounter = cc;
   const r = actor.root; r.position.set(MON_SPAWN.x, 0, MON_SPAWN.z); r.rotation.y = Math.PI; scene.add(r);
@@ -2007,8 +2108,10 @@ function flickLamp(x,y,z,c,b,pole){
   flick.push({m,l,s:sp,b,c,next:0,on:true});
 }
 function nightExtras(){
-  (isTouch?[[-16,-12],[16,-12],[0,4],[0,15]]:[[-20,-20],[0,-20],[20,-20],[-20,-3],[0,-3],[20,-3],[-20,14],[0,14],[20,14]]).forEach(([x,z])=>{const l=new THREE.PointLight(0xfff0d6,isTouch?1.3:1.1,32);l.position.set(x,4,z);scene.add(l);});
-  [[-5,-8],[15,-14],[15.5,-34],[-24,5]].forEach(([x,z])=>flickLamp(x,4.7,z,0xfff1c9,.9,0));
+  (isTouch?[[-16,-12],[16,-12],[0,4],[0,15]]:[[-20,-20],[0,-20],[20,-20],[-20,-3],[0,-3],[20,-3],[-20,14],[0,14],[20,14]]).forEach(([x,z])=>{const l=new THREE.PointLight(0xffe9b8,isTouch?1.3:1.1,32);l.position.set(x,4,z);scene.add(l);
+    /* sombras reais das luzes do teto (só algumas, por causa do desempenho) */
+    if((!isTouch&&Math.abs(z+3)<.1)||(isTouch&&x===0&&z===4))shadowLight(l,isTouch?512:1024,34);});
+  [[-5,-8],[15,-14],[15.5,-34],[-24,5]].forEach(([x,z])=>flickLamp(x,4.7,z,0xffe8aa,.9,0));
   [[-60,50],[60,50],[-60,-16],[48,-55],[0,57]].forEach(([x,z])=>flickLamp(x,6.2,z,0xffb35a,1.1,1));
   const road=new THREE.Mesh(new THREE.PlaneGeometry(140,12),tx('rua',std(0xffffff,{map:noiseTex('#2b2e34',.4,30,3),roughness:.95})));road.rotation.x=-Math.PI/2;road.position.set(0,.012,62);road.receiveShadow=true;scene.add(road);
   for(let x=-66;x<66;x+=8)box(3,.02,.2,std(0xfacc15),x,.03,62,false,false);
