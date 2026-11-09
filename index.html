@@ -1319,7 +1319,7 @@ function hamPanItem(){           // Canhão de Presunto: frigideira com o presun
   const bb=new THREE.Box3().setFromObject(pn);hm.scale.setScalar(.5);hm.position.set(.06,bb.max.y-.15,0);hm.rotation.z=Math.PI/2;g.add(hm);return g;
 }
 function makeItem(i){
-  if(i===5)return spearItem();if(i===6)return bazookaItem();if(i===10)return hamPanItem();
+  if(i===5)return spearItem();if(i===6)return zMode?bazookaOnly():bazookaItem();if(i===10)return hamPanItem();
   if(ITEMS[i].p){const w=new THREE.Group();ITEMS[i].p.forEach((q,k)=>{const c=makeItem(q);c.scale.setScalar(.85);c.position.x=k?.1:-.1;w.add(c);});return w;}
   const itemModels = { 0: 'bread', 1: 'pan', 2: 'bottle', 3: 'broom', 9: 'ham' };   // Baguete, Frigideira, Garrafa, Vassoura
   if (itemModels[i]) {
@@ -1526,7 +1526,7 @@ function hurtAI(a, dmg, kx, kz) {
   beep(120, .1, 'sawtooth'); burst(new THREE.Vector3(a.position.x, 1.3, a.position.z), 0xffffff, 12);
   actorOf(a).hit();
   if (u.hp <= 0) { actorOf(a).die(); kills++; }
-  if (ais.length && ais.every(x => x.userData.hp <= 0)) endGame(true);
+  checkSoloWin();
 }
 function hurtPlayerNet(id, dmg) {   // o servidor valida e devolve 'playerHit' para todos
   if (socket) socket.emit('damage', { room: currentRoom, target: id, amount: Math.round(dmg) });
@@ -1843,6 +1843,7 @@ function killMonster() {
   const m = monster; if (!m || m.dead) return;
   m.dead = true; m.hp = 0; m.actor.die(); toast('☠️ O Homem Congelado foi derrotado!'); $('bossBar').style.display = 'none';
   burst(new THREE.Vector3(m.root.position.x, 1.2, m.root.position.z), 0xbfe9ff, 40);
+  if (isSolo && !zMode) { kills++; checkSoloWin(); }
 }
 /* regiões: 0 congelados · 1 resfriados · 2 corredor · 3 resto do mercado — o monstro passa pelas portas */
 function regionOf(x, z) {
@@ -1946,7 +1947,7 @@ function attack(){
     }
   });
   if(monster&&monster.awake&&!monster.dead){const mx=monster.root.position.x-camera.position.x,mz=monster.root.position.z-camera.position.z,md=Math.hypot(mx,mz);if(md<3.6&&(mx*fx_+mz*fz)/(md||1)>.3)monsterHurt(dmg);}
-  if(ais.every(a=>a.userData.hp<=0))endGame(true);
+  checkSoloWin();
   },150);
 }
 function hurt(n){
@@ -2011,9 +2012,17 @@ function fxUpdate(dt,t){
   flick.forEach(f=>{if(t>f.next){f.on=Math.random()>.4;f.next=t+(f.on?.15+Math.random()*1.6:.04+Math.random()*.12);}f.l.intensity=f.on?f.b:f.b*.08;f.m.color.setHex(f.on?f.c:0x2a2a2a);f.s.material.opacity=f.on?.4:0;});
 }
 
+/* ---------- FIM DO MODO CLÁSSICO SOLO: só vence quando TODOS os inimigos caírem (IAs + Homem Congelado) ---------- */
+function checkSoloWin() {
+  if (!isSolo || zMode || gameOver || !ais.length) return;
+  if (!ais.every(a => a.userData.hp <= 0)) return;
+  if (monster && !monster.dead) { if (!checkSoloWin.warned) { checkSoloWin.warned = 1; toast('❄ Falta derrotar o Homem Congelado!'); } return; }
+  endGame(true);
+}
 /* =====================================================================
    MODO ATAQUE ZUMBI (solo)
-   - Bazuca lança-itens: munição = vassoura, baguete, garrafa, bacon, frigideira (20 de cada)
+   - Bazuca lança-itens: a munição são os itens coletados no chão (baguete, frigideira, garrafa, vassoura, bacon/presunto);
+     cada item coletado vale 20 munições, com o mesmo dano do item
    - 50 zumbis por partida: ondas de 6 a cada 25 s (do lado de fora da loja)
      + a cada 3 mortos, 4 surgem em pontos aleatórios do mapa (longe do jogador)
    - Derrotou os 50 = fim de jogo (vitória)
@@ -2030,7 +2039,9 @@ const ZCFG = {
   hp: 45, dmg: 8, range: 1.5, cd: 1.0, speedMin: 1.9, speedMax: 3.1,
   meleeDmg: 20,         // golpe corpo a corpo (só quando toda a munição acabar)
   fireCd: 420,          // ms entre disparos
-  ammoEach: 20          // munição de cada item
+  ammoPerItem: 20,      // cada item coletado vale N munições
+  startAmmo: 0,         // munição de cada tipo ao começar a partida
+  projBonus: 25         // dano do projétil = dano do item (ITEMS) + este bônus (o mesmo do arremesso normal; 0 = só o valor do item)
 };
 const AMMO = [
   { t: 3, n: 'Vassoura', e: '🧹' }, { t: 0, n: 'Baguete', e: '🥖' }, { t: 2, n: 'Garrafa', e: '🍾' },
@@ -2042,12 +2053,13 @@ let zKeysBound = false;
 function zAlive() { let n = 0; for (const z of Z.list) if (!z.dead) n++; return n; }
 
 function zombieInit() {
-  zWorld(); Z.ammo = AMMO.map(() => ZCFG.ammoEach); Z.sel = 0; Z.waveT = ZCFG.waveEvery - ZCFG.firstDelay;
+  zWorld(); Z.ammo = AMMO.map(() => ZCFG.startAmmo); Z.sel = 0; Z.waveT = ZCFG.waveEvery - ZCFG.firstDelay;
   document.body.classList.add('zmode');
-  equipPlayer(6); $('item').textContent = '🚀 Bazuca lança-itens';
+  spawnLoot();                                                   // itens no chão = munição
+  equipPlayer(6); $('item').textContent = '🚀 Bazuca — pegue itens para ter munição';
   $('invBtn').style.display = 'none';
-  $('hint').textContent = isTouch ? 'Joystick move · arraste para olhar · toque na munição para trocar'
-    : 'WASD mover · clique/Espaço/F atirar · 1-5 ou roda do mouse trocam a munição';
+  $('hint').textContent = isTouch ? 'Joystick move · PEGAR coleta item (+20 munições) · toque na munição para trocar'
+    : 'WASD mover · E pegar item (+20 munições) · clique/Espaço/F atirar · 1-5 ou roda do mouse trocam a munição';
   $('zHud').style.display = 'block'; $('ammoBar').style.display = 'flex';
   buildAmmoBar(); zHudUpdate(); zBindKeys();
   toast('🧟 ATAQUE ZUMBI! Derrote os ' + ZCFG.total + ' zumbis');
@@ -2056,7 +2068,7 @@ function buildAmmoBar() {
   const bar = $('ammoBar'); bar.innerHTML = '';
   AMMO.forEach((a, i) => {
     const b = document.createElement('div'); b.className = 'ammoSlot'; b.id = 'ammo' + i;
-    b.innerHTML = '<small>' + (i + 1) + '</small><span class="ae">' + a.e + '</span><b>' + ZCFG.ammoEach + '</b>';
+    b.innerHTML = '<small>' + (i + 1) + '</small><span class="ae">' + a.e + '</span><b>' + ZCFG.startAmmo + '</b>';
     const pick = e => { zSelect(i); e.preventDefault(); e.stopPropagation(); };
     b.addEventListener('touchstart', pick, { passive: false }); b.addEventListener('mousedown', pick);
     bar.appendChild(b);
@@ -2083,6 +2095,26 @@ function zHudUpdate() {
   $('zHud').innerHTML = '🧟 Restam <b>' + (ZCFG.total - Z.kills) + '</b>/' + ZCFG.total + ' · na tela ' + zAlive() + ' · <small>' + nxt + '</small>';
 }
 
+/* ---------- COLETA: cada item pego vira +20 munições do mesmo tipo ---------- */
+function zPickup(l) {
+  const i = AMMO.findIndex(a => a.t === l.t);
+  if (i < 0) { toast('Esse item não serve de munição'); return; }
+  Z.ammo[i] += ZCFG.ammoPerItem;
+  if (Z.ammo[Z.sel] <= 0 || Z.sel === i) Z.sel = i;               // se estava sem munição, já seleciona o que pegou
+  takeLoot(l); toast('Pegou: ' + AMMO[i].n + ' (+' + ZCFG.ammoPerItem + ' munições)'); zHudUpdate();
+}
+function bazookaOnly() {                      // só a bazuca (sem vassoura). Eixo +Y = boca do tubo (aponta para a frente na mão)
+  const g = new THREE.Group(), steel = std(0x4b5563, { metalness: .7, roughness: .35 }), dark = std(0x111827), org = std(0xf97316, { roughness: .4 });
+  const part = (geo, mat, y, rx) => { const m = new THREE.Mesh(geo, mat); m.position.y = y; if (rx) m.rotation.x = rx; m.castShadow = true; g.add(m); return m; };
+  part(new THREE.CylinderGeometry(.1, .1, 1.1, 16), steel, .2);                 // tubo
+  part(new THREE.CylinderGeometry(.125, .125, .06, 16), org, .76);              // boca
+  part(new THREE.CylinderGeometry(.13, .09, .16, 16), dark, -.38);              // traseira
+  part(new THREE.CylinderGeometry(.115, .115, .05, 16), dark, .5);              // anel
+  part(new THREE.CylinderGeometry(.115, .115, .05, 16), dark, -.05);            // anel
+  const grip = part(new THREE.BoxGeometry(.06, .22, .08), dark, .0); grip.position.set(0, -.04, .17);   // empunhadura
+  return g;
+}
+
 /* ---------- ARMAS ---------- */
 function zFire() {
   if (gameOver || !started) return;
@@ -2100,7 +2132,7 @@ function zRelease() {                         // chamado no instante do disparo 
   const dir = lookDir(), right = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
   const pos = camera.position.clone().addScaledVector(dir, .7).addScaledVector(right, .25); pos.y -= .12;
   const m = makeItem(t); m.position.copy(pos); scene.add(m);
-  projs.push({ m, t, remote: false, life: 3, dmg: ITEMS[t].d + 25, g: 3, v: dir.clone().multiplyScalar(36),
+  projs.push({ m, t, remote: false, life: 3, dmg: ITEMS[t].d + ZCFG.projBonus, g: 3, v: dir.clone().multiplyScalar(36),
     spin: new THREE.Vector3((Math.random() - .5) * 10, (Math.random() - .5) * 6, 12 + Math.random() * 6) });
   fpKick = -.07; shake = Math.max(shake, .3); beep(150, .12, 'sawtooth');
   burst(pos.clone().addScaledVector(dir, .4), 0xfbbf24, 8);
@@ -2108,7 +2140,7 @@ function zRelease() {                         // chamado no instante do disparo 
 }
 function zMelee() {                           // sem munição nenhuma: não trava o jogo
   const now = performance.now(); if (now - lastAtk < 450) return; lastAtk = now;
-  startFP('swing'); beep(220, .07); toast('Sem munição! Corpo a corpo');
+  startFP('swing'); beep(220, .07); toast('Sem munição! Pegue itens no chão (E) — corpo a corpo');
   setTimeout(() => {
     if (gameOver) return;
     const fx_ = -Math.sin(yaw), fz = -Math.cos(yaw);
@@ -2604,6 +2636,7 @@ let inv=[],sel=[],nearLoot=null,invOpen=false,lastPick='';
 function toast(t){const e=$('toast');e.textContent=t;e.style.opacity=1;clearTimeout(toast.h);toast.h=setTimeout(()=>e.style.opacity=0,2200);}
 function pickup(){
   if(!nearLoot||nearLoot.taken||gameOver)return;
+  if(zMode){zPickup(nearLoot);return;}
   if(inv.length>=6){toast('Inventário cheio (6)');return;}
   const t=nearLoot.t;inv.push(t);if(!isSolo&&socket)socket.emit('lootTaken',{room:currentRoom,i:loot.indexOf(nearLoot)});takeLoot(nearLoot);toast('Pegou: '+ITEMS[t].n);
   if(weapon===null)equipPlayer(t);renderInv();
