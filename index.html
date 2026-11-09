@@ -1171,6 +1171,17 @@ function pararMusica() {                            // fim de jogo: abaixa devag
 })();
 
 /* ---------- JOGO ---------- */
+/* ---------- SONS DE DANO ----------
+   4 áudios que tocam de forma aleatória ao tomar dano.
+   Coloque os arquivos em: audio/dano1.mp3, audio/dano2.mp3, audio/dano3.mp3, audio/dano4.mp3 */
+const DANOS = ['audio/dano1.mp3', 'audio/dano2.mp3', 'audio/dano3.mp3', 'audio/dano4.mp3'];
+const danoAudios = DANOS.map(src => { const a = new Audio(src); a.preload = 'auto'; a.volume = 0.65; return a; });
+function playDamageSound() {
+  const a = danoAudios[Math.floor(Math.random() * danoAudios.length)];
+  try { a.currentTime = 0; } catch (e) {}
+  a.play().catch(() => {});
+}
+
 async function startGame(solo) {
   if (started) return;
   showLoading();
@@ -1533,7 +1544,7 @@ function hurtPlayerNet(id, dmg) {   // o servidor valida e devolve 'playerHit' p
 }
 function onlineHurt(h) {            // dano sofrido (vida vem do servidor)
   health = Math.max(0, h); $('healthFill').style.width = health + '%'; hpClass();
-  $('hurt').style.opacity = 1; setTimeout(() => $('hurt').style.opacity = 0, 200); shake = 1; beep(90, .15, 'sawtooth');
+  $('hurt').style.opacity = 1; setTimeout(() => $('hurt').style.opacity = 0, 200); shake = 1; playDamageSound();
 }
 function projImpact(p) {
   const pos = p.m.position, boom = EXPLOSIVE.includes(p.t);
@@ -1952,7 +1963,7 @@ function attack(){
 }
 function hurt(n){
   health=Math.max(0,health-n);$('healthFill').style.width=health+'%';hpClass();
-  $('hurt').style.opacity=1;setTimeout(()=>$('hurt').style.opacity=0,200);shake=1;beep(90,.15,'sawtooth');
+  $('hurt').style.opacity=1;setTimeout(()=>$('hurt').style.opacity=0,200);shake=1;playDamageSound();
   if(health<=0)endGame(false);
 }
 function update(dt,t){
