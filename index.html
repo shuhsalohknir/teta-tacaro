@@ -1381,8 +1381,8 @@ function buildFP() {
   if (!models.arms) { console.warn('Modelo de braços não carregado'); buildFPFallback(); return; }
   const model = (THREE.SkeletonUtils ? THREE.SkeletonUtils.clone(models.arms) : models.arms.clone(true));
   // Ajuste de escala e posição para encaixar na visão em 1ª pessoa (tune estes valores)
-  model.scale.setScalar(0.85);
-  model.position.set(0.0, -0.35, -0.15);
+  model.scale.setScalar(1.1);
+  model.position.set(0.05, -0.55, -0.65);   // mais para frente e um pouco para baixo
   model.rotation.set(0, 0, 0);
   camera.add(model);
   fpArms = model;
@@ -1495,7 +1495,7 @@ function updateFP(dt, t) {
   const bb = Math.sin(bob) * 0.008 * mv;
   const idle = Math.sin(t * 1.4) * 0.004;
   if (fpArms.position) {
-    fpArms.position.y = -0.35 + bb + idle;
+    fpArms.position.y = -0.55 + bb + idle;
   }
 
   // Controle de timing para releaseThrow (mantém a lógica antiga)
