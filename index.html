@@ -532,11 +532,11 @@ function paintHeight(root, stops) {
 /* ---------- ITENS (armas / loot) ----------
    len  = comprimento em metros · grip = onde a mão segura (0 = base … 1 = topo · 'handle' = ponta do cabo) */
 const PROP_SPECS = {
-  bread:   { len: .95, grip: .5,  paint: { brown: 0xc58a45, brownlight: 0xe8c27d } },
-  pan:     { len: .75, grip: 'handle', paint: { crayfishdiffuse: { c: 0x2b2f36, m: .55, r: .4 }, '02default': { c: 0xd1d5db, m: .6, r: .3 }, '03default': 0xb91c1c } },
-  ham:     { len: .55, grip: .5,  paint: { browndark: 0xa0401f, defaultmat: 0xf3ead8, brownlight: 0xf0a46d, orange: 0xe5441a } },
-  bottle:  { len: .55, grip: .62, paint: { '4caf50': { c: 0x2e9e4f, r: .15, m: .1 }, dd9944: { c: 0xd9a441, r: .3, m: .6 }, ffffff: 0xf8fafc, '1a1a1a': 0x1a1a1a, f44336: 0xdc2626 } },
-  broom:   { len: 1.5, grip: .38, paint: { lambert8sg: 0x8b5a2b, lambert9sg: 0xe3b94f, lambert10sg: 0x7c2d12, lambert11sg: { c: 0x9ca3af, m: .7, r: .35 } } },
+  bread:   { len: .62, grip: .5,  paint: { brown: 0xc58a45, brownlight: 0xe8c27d } },
+  pan:     { len: .48, grip: 'handle', paint: { crayfishdiffuse: { c: 0x2b2f36, m: .55, r: .4 }, '02default': { c: 0xd1d5db, m: .6, r: .3 }, '03default': 0xb91c1c } },
+  ham:     { len: .38, grip: .5,  paint: { browndark: 0xa0401f, defaultmat: 0xf3ead8, brownlight: 0xf0a46d, orange: 0xe5441a } },
+  bottle:  { len: .38, grip: .62, paint: { '4caf50': { c: 0x2e9e4f, r: .15, m: .1 }, dd9944: { c: 0xd9a441, r: .3, m: .6 }, ffffff: 0xf8fafc, '1a1a1a': 0x1a1a1a, f44336: 0xdc2626 } },
+  broom:   { len: 1.05, grip: .38, paint: { lambert8sg: 0x8b5a2b, lambert9sg: 0xe3b94f, lambert10sg: 0x7c2d12, lambert11sg: { c: 0x9ca3af, m: .7, r: .35 } } },
   toilet:  { len: .35, grip: .5,  paint: { material000: 0xf8fafc } },
   firtree: { len: 3.2, grip: 0,   paint: { mat10: 0x1f5d3a, mat20: 0x5b3a1e } },
   tree:    { len: 5,   grip: 0,   vc: 'tree' },
@@ -1352,7 +1352,7 @@ function makeItem(i){
 function spawnLoot(){
   (MAPDATA||[]).filter(o=>o.t==='loot').forEach((o,k)=>{
     const x=o.x,z=o.z,fixed=o.item!=null&&+o.item>=0&&+o.item<ITEMS.length,t=fixed?+o.item:k%4,g=new THREE.Group(),it=makeItem(t);
-    it.scale.setScalar(1.3);it.position.y=1.1;it.rotation.z=.6;g.add(it);
+    it.scale.setScalar(0.75);it.position.y=0.65;it.rotation.z=.6;g.add(it);
     const beam=new THREE.Mesh(new THREE.CylinderGeometry(.35,.35,3,16,1,true),new THREE.MeshBasicMaterial({color:0xfde047,transparent:true,opacity:.25,blending:THREE.AdditiveBlending,depthWrite:false,side:THREE.DoubleSide}));
     beam.position.y=1.5;g.add(beam);
     const ring=new THREE.Mesh(new THREE.RingGeometry(.5,.7,32),new THREE.MeshBasicMaterial({color:0xfde047,transparent:true,opacity:.7,side:THREE.DoubleSide}));
@@ -2216,11 +2216,11 @@ function makeZombie() {
         o.frustumCulled = false;
       }
     });
-    // normaliza escala para ~1.75 m de altura
+    // normaliza escala para ~1.55 m de altura (proporcional aos personagens)
     model.updateMatrixWorld(true);
     const bb = new THREE.Box3().setFromObject(model);
     const h = Math.max(0.01, bb.max.y - bb.min.y);
-    const sc = 1.75 / h;
+    const sc = 1.55 / h;
     model.scale.setScalar(sc);
     model.updateMatrixWorld(true);
     const bb2 = new THREE.Box3().setFromObject(model);
@@ -2700,11 +2700,11 @@ function buildMap(){
       const [fx, fz] = fp(o);
       const g = models.fruitstall.clone(true);
       g.traverse(m => { if (m.isMesh) { m.castShadow = m.receiveShadow = true; m.frustumCulled = false; } });
-      // escala para caber na banca (~largura do produce)
+      // escala proporcional (bancas ~2.8 m de largura, não o tamanho total do produce)
       const bb = new THREE.Box3().setFromObject(g);
       const sz = bb.getSize(new THREE.Vector3());
-      const targetW = Math.max(fx, 1.5);
-      const sc = targetW / Math.max(sz.x, sz.z, 0.01);
+      const targetW = 2.8;
+      const sc = (targetW / Math.max(sz.x, sz.z, 0.01)) * 0.65;
       g.scale.setScalar(sc);
       g.updateMatrixWorld(true);
       const bb2 = new THREE.Box3().setFromObject(g);
