@@ -385,7 +385,7 @@ function loadModels() {
     ['car', 'models/car.obj', objLoader, g => g],
     ['arms', 'models/fists_fp_arms.glb', gltfLoader, g => { models.arms = g.scene; models.armsAnims = g.animations || []; return g.scene; }],
     ['fruitstall', 'models/fruit_stall_highpoly.glb', gltfLoader, g => g.scene],
-    ['zombie', 'models/zombie_moss_-_zumbi_musgo.glb', gltfLoader, g => g.scene]
+    ['zombie', 'models/zombie_moss_-_zumbi_musgo.glb', gltfLoader, g => { models.zombieAnims = g.animations || []; return g.scene; }]
   ];
   const tot = files.length + 2; let nd = 0; const step = () => { nd++; if (onLoadStep) onLoadStep(nd / tot); };
   const imgs = ['car', 'tree'].map(n => new Promise(r => { const im = new Image(); im.onload = () => { texImg[n] = im; step(); r(); }; im.onerror = () => { console.warn('✗ textura', n); step(); r(); }; im.src = 'models/' + n + '_texture.png'; }));
@@ -1375,15 +1375,18 @@ let fpArms = null, fpMixer = null, fpAnim = null, fpRoll = 0, fpKick = 0, projs 
 let fpItem = null, fpItemT = 1, fpItemY = 0;
 let fpR = null, fpL = null, fpPivot = null, fpCur = null, fpCurName = '', fpLock = false, fpSide = 0;
 const FP_CFG = {
-  scale: 1.0,                        // tamanho dos braços (aumente/diminua para ajustar)
+  scale: 1.0,                        // tamanho dos braços
   pos: [0, 0, 0],                    // deslocamento em relação à câmera: x direita, y cima, z (frente = negativo)
-  cam: [0, 1.5313, 0.0212],          // posição da câmera dentro do arquivo original (não mexer)
-  mount: { pos: [0.0024, 0.078, 0.0064], quat: [0.3101, 0.9305, 0.051, -0.1881] },      // onde o item fica preso na mão direita
-  itemLen: { def: .3, 0: .42, 1: .36, 2: .25, 3: .68, 4: .34, 5: .72, 6: .6, 7: .3, 8: .55, 9: .2, 10: .42 },   // comprimento (m) do item na mão, por índice de ITEMS ('def' = os demais)
-  gripFrac: { 2: .14, 3: .08 },      // onde a mão segura, como fração do comprimento a partir da ponta fina (gargalo / cabo)
-  walkSpeed: 2.0,                    // velocidade da animação de andar
-  punchSpeed: 2.0,                   // soco: o impacto cai em ~0,16 s (casa com o dano do attack())
-  throwSpeed: 1.8, fireSpeed: 2.6
+  yaw: 0,                            // 0 = braços olham para -Z (modelo "FPS Arms"). Modelo antigo "Fists": Math.PI
+  cam: [0, 0, 0],                    // modelo antigo "Fists": [0, 1.5313, 0.0212]
+  mount: { pos: [0.0024, 0.078, 0.0064], quat: [0.3101, 0.9305, 0.0510, -0.1881] },   // só para o modelo antigo
+  itemLen: { def: .3, 0: .42, 1: .36, 2: .25, 3: .68, 4: .34, 5: .72, 6: .6, 7: .3, 8: .55, 9: .2, 10: .42 },   // comprimento (m) do item na mão, por índice de ITEMS
+  gripFrac: { 2: .14, 3: .08 },      // onde a mão segura, a partir da ponta fina (gargalo / cabo)
+  walkSpeed: 1.9,                    // andar: 1 ciclo = 1,2 s / walkSpeed
+  punchSpeed: 1.5,                   // soco: o impacto cai em ~0,16 s (casa com o dano do attack())
+  swingSpeed: 1.8,                   // golpe com item: impacto em ~0,16 s
+  throwSpeed: 1.7,                   // arremesso: o item sai em ~0,18 s
+  fireSpeed: 1.0
 };
 
 function buildFP() {
@@ -1392,11 +1395,13 @@ function buildFP() {
   model.traverse(o => {
     if (!(o.isMesh || o.isSkinnedMesh)) return;
     o.frustumCulled = false; o.castShadow = false; o.receiveShadow = false;
-    if (o.material && o.material.map) { o.material.emissiveMap = o.material.map; o.material.emissive.setScalar(.16); }  // não fica escuro nos cantos do mercado
+    if (o.material) {
+      if (o.material.map) { o.material.emissiveMap = o.material.map; o.material.emissive.setScalar(.16); }
+      else o.material.emissive.setHex(0x2a2018);                 // não fica escuro nos cantos do mercado
+    }
   });
-  // o arquivo original olha para +Z; a câmera do jogo olha para -Z
   const pivot = new THREE.Group();
-  pivot.rotation.y = Math.PI; pivot.scale.setScalar(FP_CFG.scale); pivot.position.fromArray(FP_CFG.pos);
+  pivot.rotation.y = FP_CFG.yaw; pivot.scale.setScalar(FP_CFG.scale); pivot.position.fromArray(FP_CFG.pos);
   model.position.set(-FP_CFG.cam[0], -FP_CFG.cam[1], -FP_CFG.cam[2]);
   pivot.add(model); camera.add(pivot);
   fpPivot = pivot; fpArms = model;
@@ -1404,21 +1409,22 @@ function buildFP() {
   fpMixer = new THREE.AnimationMixer(model);
   fpArms.userData.clips = {};
   (models.armsAnims || []).forEach(c => { fpArms.userData.clips[c.name] = c; });
-  console.log('Braços Fists carregados. Animações:', Object.keys(fpArms.userData.clips).join(', '));
+  console.log('Braços carregados. Animações:', Object.keys(fpArms.userData.clips).join(', '));
 
-  // ponto de fixação dos itens: osso da mão direita
-  let hand = null;
-  model.traverse(o => { if (!hand && o.name === 'DEF-hand_R') hand = o; });
-  if (!hand) console.warn('Osso da mão direita não encontrado');
-  const mount = new THREE.Group(); mount.name = 'weaponMount';
-  mount.position.fromArray(FP_CFG.mount.pos); mount.quaternion.fromArray(FP_CFG.mount.quat);
-  (hand || model).add(mount);
-  const ip = new THREE.Group(); ip.name = 'itemPivot'; mount.add(ip); fpItem = ip;   // gira/escala o item (animações do item)
+  // ponto onde o item fica preso: "mount_R" (modelo novo) ou osso da mão direita (modelo antigo)
+  let mount = model.getObjectByName('mount_R');
+  if (!mount) {
+    let hand = null; model.traverse(o => { if (!hand && o.name === 'DEF-hand_R') hand = o; });
+    mount = new THREE.Group(); mount.name = 'weaponMount';
+    mount.position.fromArray(FP_CFG.mount.pos); mount.quaternion.fromArray(FP_CFG.mount.quat);
+    (hand || model).add(mount);
+  }
+  const ip = new THREE.Group(); ip.name = 'itemPivot'; mount.add(ip); fpItem = ip;   // aparece / balança o item
   fpArms.userData.mount = mount;
   fpR = { mount: mount, arm: model };          // compatibilidade com equipPlayer()
 
   fpMixer.addEventListener('finished', e => { if (e.action === fpCur) { fpLock = false; fpCurName = ''; } });
-  fpPlay('Idle', true, 1, 0);
+  fpPlay(fpArms.userData.clips.Equip ? 'Equip' : 'Idle', !fpArms.userData.clips.Equip, 1, 0);
 }
 
 
@@ -1502,31 +1508,28 @@ function fpItemAnim(dt, t) {
   if (!fpItem) return;
   const has = !!(held && held.parent === fpItem);
   fpItem.visible = has; if (!has) return;
-  // 1) aparece ao pegar: cresce com um "pulinho" e gira rapidinho
   let sc = 1, spin = 0;
-  if (fpItemT < 1) { fpItemT = Math.min(1, fpItemT + dt / .4); const k = fpItemT - 1; sc = 1 + 2.7 * k * k * k + 1.7 * k * k; spin = (1 - fpItemT) * 1.6; }
-  fpItem.scale.setScalar(Math.max(.01, sc));
-  // 2) golpe / arremesso / disparo
-  let th = 0;
-  if (fpAnim) {
-    const p = Math.min(1, fpAnim.t / fpAnim.dur);
-    if (fpAnim.kind === 'swing' || fpAnim.kind === 'jab') th = fpSwingCurve(p);
-    else if (fpAnim.kind === 'throw') th = fpSwingCurve(Math.min(1, p * 1.6)) * .8;
-    else if (fpAnim.kind === 'fire') th = -.35 * (1 - p);                       // coice
+  if (fpItemT < 1) {
+    fpItemT = Math.min(1, fpItemT + dt / .4);
+    if (fpItemT < 0) { fpItem.visible = false; return; }          // espera a mão chegar no item
+    const k = fpItemT - 1; sc = 1 + 2.7 * k * k * k + 1.7 * k * k; spin = (1 - fpItemT) * 1.6;
   }
-  fpItemY += (th - fpItemY) * Math.min(1, dt * 30);
-  // 3) balanço leve parado / andando
+  fpItem.scale.setScalar(Math.max(.01, sc));
   const mv = (keys.KeyW || keys.KeyS || keys.KeyA || keys.KeyD) ? 1 : Math.min(1, Math.hypot(jv.x, jv.y));
-  const sway = Math.sin(t * (1.6 + 3 * mv)) * (.025 + .03 * mv);
-  fpItem.rotation.set(fpItemY + sway * .6, spin, sway);
+  const sway = Math.sin(t * (1.6 + 3 * mv)) * (.015 + .02 * mv);   // balanço leve; o golpe / arremesso / coice vêm do braço
+  fpItem.rotation.set(sway * .6, spin, sway);
 }
 
 function startFP(kind) {
   const armed = weapon !== null && weapon !== undefined;
+  const has = n => !!(fpArms && fpArms.userData.clips && fpArms.userData.clips[n]);
   let clip = 'Punch_R', speed = FP_CFG.punchSpeed, dur = .5, rel = 0;
-  if (kind === 'swing') { if (!armed) { fpSide ^= 1; clip = fpSide ? 'Punch_L' : 'Punch_R'; } }   // sem item: alterna os punhos · com item: soco com a mão direita
-  else if (kind === 'throw') { speed = FP_CFG.throwSpeed; dur = .55; rel = .18; }
-  else if (kind === 'fire') { speed = FP_CFG.fireSpeed; dur = .4; rel = .05; }
+  if (kind === 'swing') {
+    if (armed) { clip = has('Swing') ? 'Swing' : 'Punch_R'; speed = FP_CFG.swingSpeed; }     // com item: golpe de cima para baixo
+    else { fpSide ^= 1; clip = fpSide ? 'Punch_L' : 'Punch_R'; }                                // sem item: um soco de cada vez
+  }
+  else if (kind === 'throw') { clip = has('Throw') ? 'Throw' : 'Punch_R'; speed = FP_CFG.throwSpeed; dur = .55; rel = .18; }
+  else if (kind === 'fire') { clip = has('Fire') ? 'Fire' : 'Punch_R'; speed = FP_CFG.fireSpeed; dur = .4; rel = .05; }
   else if (kind === 'jab') { clip = 'Punch_L'; }
   fpAnim = { kind, t: 0, dur, rel, done: false, released: false };
   fpPlay(clip, false, speed, .06);
@@ -1538,9 +1541,12 @@ function updateFP(dt, t) {
   // base: parado (Idle) ou andando (Walk), só quando nenhuma ação está tocando
   if (fpArms && !fpLock) {
     const mv = (keys.KeyW || keys.KeyS || keys.KeyA || keys.KeyD) ? 1 : Math.min(1, Math.hypot(jv.x, jv.y));
-    const want = mv > .15 ? 'Walk' : 'Idle';
-    if (fpCurName !== want) fpPlay(want, true, want === 'Walk' ? FP_CFG.walkSpeed : 1, .2);
-    else if (want === 'Walk' && fpCur) fpCur.setEffectiveTimeScale(FP_CFG.walkSpeed * (.65 + .35 * mv));
+    const armed = weapon !== null && weapon !== undefined, lau = armed && KEEP_WEAPONS.includes(weapon);
+    const walking = mv > .15, cl = fpArms.userData.clips;
+    let want = walking ? (lau ? 'LauncherWalk' : armed ? 'HoldWalk' : 'Walk') : (lau ? 'Launcher' : armed ? 'Hold' : 'Idle');
+    if (!cl[want]) want = walking ? 'Walk' : 'Idle';       // modelo sem esses clips
+    if (fpCurName !== want) fpPlay(want, true, walking ? FP_CFG.walkSpeed : 1, .2);
+    else if (walking && fpCur) fpCur.setEffectiveTimeScale(FP_CFG.walkSpeed * (.65 + .35 * mv));
   }
 
   // tempo do golpe / disparo (funciona mesmo no modo de reserva sem modelo)
@@ -2012,12 +2018,12 @@ function monsterUpdate(dt, t) {
 function equipPlayer(t){
   weapon=t;if(held&&held.parent)held.parent.remove(held);
   held=makeItem(t);
-  if(fpR && fpR.mount){fpFitItem(held,t);(fpItem||fpR.mount).add(held);held.position.set(0,0,0);held.rotation.set(0,0,0);fpItemT=0;}
+  if(fpR && fpR.mount){fpFitItem(held,t);(fpItem||fpR.mount).add(held);held.position.set(0,0,0);held.rotation.set(0,0,0);fpItemT=-.45;}
   else{held.position.set(.38,-.35,-.7);held.rotation.set(-1.2,0,-.3);camera.add(held);}
   $('item').textContent='🎒 '+ITEMS[t].n+' (+'+ITEMS[t].d+' dano)';
   if(!isSolo&&socket)socket.emit('equip',{room:currentRoom,weapon:t});
   // Troca idle do modelo de braços conforme tenha arma ou não
-  if (fpArms && t != null) fpPlay('Equip', false, 1.4, .1);   // ergue os punhos ao pegar um item
+  if (fpArms && t != null) fpPlay(fpArms.userData.clips.Take ? 'Take' : 'Equip', false, 1.0, .1);   // a mão desce, pega e sobe com o item
 }
 function equipAI(a,t){
   const u=a.userData,it=makeItem(t);u.weapon=t;u.armed=true;
@@ -2132,6 +2138,10 @@ function checkSoloWin() {
    - Derrotou os 50 = fim de jogo (vitória)
    Ajuste tudo em ZCFG.
    ===================================================================== */
+/* MODELO 3D DO ZUMBI
+   yaw: se o zumbi aparecer de COSTAS, troque entre Math.PI e 0.
+   walk / attack / idle / death: nome exato da animação no .glb (null = detecta sozinho pelo nome; veja o console do navegador). */
+const ZMODEL = { yaw: Math.PI, walk: null, attack: null, idle: null, death: null };
 const ZCFG = {
   total: 50,            // zumbis por partida
   wave: 6,              // zumbis por onda
@@ -2285,6 +2295,7 @@ function makeZombie() {
         o.frustumCulled = false;
       }
     });
+    model.rotation.y = ZMODEL.yaw;       // corrige o lado para onde o modelo olha
     // mesmo tamanho do personagem (~1.7 m)
     model.updateMatrixWorld(true);
     const bb = realBox(model);
@@ -2305,7 +2316,19 @@ function makeZombie() {
     });
     // dummies para a animação procedural não quebrar (o modelo 3D usa animação de corpo inteiro)
     const dummy = new THREE.Group();
-    return { root, body: model, legL: dummy, legR: dummy, armL: dummy, armR: dummy, mats, is3d: true };
+    // animações gravadas no modelo (andar, atacar, parado, morrer)
+    let mixer = null; const acts = {}; const clips = models.zombieAnims || [];
+    if (clips.length) {
+      if (!makeZombie.logged) { makeZombie.logged = true; console.log('Zumbi - animações do modelo:', clips.map(c => c.name).join(', ')); }
+      mixer = new THREE.AnimationMixer(model);
+      const pick = (k, re) => { const c = ZMODEL[k] ? clips.find(x => x.name === ZMODEL[k]) : clips.find(x => re.test(x.name)); if (c) acts[k] = mixer.clipAction(c); };
+      pick('walk', /walk|run|shamble|crawl|limp|andar|corr|move/i);
+      pick('attack', /attack|hit|punch|bite|swipe|claw|slash|strike|atac|bater/i);
+      pick('idle', /idle|stand|breath|wait|parad/i);
+      pick('death', /die|death|dead|fall|morr|morte/i);
+      if (!acts.walk) { const c = clips.find(x => !/attack|hit|punch|bite|swipe|claw|death|die|dead|idle/i.test(x.name)) || clips[0]; if (c) acts.walk = mixer.clipAction(c); }
+    }
+    return { root, body: model, legL: dummy, legR: dummy, armL: dummy, armR: dummy, mats, is3d: true, mixer, acts, cur: '' };
   }
   // fallback: zumbi de caixas (original)
   if (!Z.geo) {
@@ -2407,6 +2430,22 @@ function zNav(p, tx, tz) {
   return (depth < -3 && along > 1.2) ? [ix, iz] : [ox, oz];              // de dentro para fora
 }
 
+/* animações do zumbi 3D: andar / atacar / parado, com transição suave */
+function zAnim(z, dt, moving) {
+  const A = z.acts;
+  const want = (z.atk >= 0 && A.attack) ? 'attack' : moving ? 'walk' : (A.idle ? 'idle' : 'walk');
+  if (z.cur !== want && A[want]) {
+    const a = A[want], prev = A[z.cur];
+    a.reset(); a.enabled = true; a.setEffectiveWeight(1);
+    if (want === 'attack') { a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = true; } else a.setLoop(THREE.LoopRepeat, Infinity);
+    a.play(); if (prev && prev !== a) prev.crossFadeTo(a, .2, false);
+    z.cur = want;
+  }
+  if (want === 'walk' && A.walk) A.walk.setEffectiveTimeScale(Math.min(1.6, Math.max(.6, z.speed / ((ZCFG.speedMin + ZCFG.speedMax) / 2))));
+  if (want === 'attack' && A.attack) A.attack.setEffectiveTimeScale(Math.max(.5, A.attack.getClip().duration / .6));   // o golpe dura ~0,6 s, com o dano em 0,3 s
+  if (want === 'walk' && !moving && !A.idle && A.walk) A.walk.setEffectiveTimeScale(0);                                // sem clip de parado: congela a pose
+  z.mixer.update(dt);
+}
 function zUpdate(dt, t) {
   const live = !gameOver;
   if (live) {
@@ -2425,7 +2464,11 @@ function zUpdate(dt, t) {
     const z = Z.list[i], p = z.pos;
     if (z.dead) {                              // cai de costas, afunda e some
       z.deadT += dt;
-      z.body.rotation.x = Math.min(Math.PI / 2, z.deadT * 5);
+      if (z.mixer) {
+        if (!z.deadAnim) { z.deadAnim = true; if (z.acts.death) { const d = z.acts.death; Object.values(z.acts).forEach(a => { if (a !== d) a.fadeOut(.1); }); d.reset(); d.enabled = true; d.setEffectiveWeight(1); d.setLoop(THREE.LoopOnce, 1); d.clampWhenFinished = true; d.play(); } else z.mixer.stopAllAction(); }
+        z.mixer.update(dt);
+      }
+      if (!(z.acts && z.acts.death)) z.body.rotation.x = Math.min(Math.PI / 2, z.deadT * 5);
       if (z.deadT > 1.4) p.y = -(z.deadT - 1.4) * .6;
       if (z.deadT > 2.4) { scene.remove(z.root); z.mats.forEach(m => m.dispose()); Z.list.splice(i, 1); }
       continue;
@@ -2461,7 +2504,9 @@ function zUpdate(dt, t) {
     // animação
     if (moving) z.ph += dt * z.speed * 3.2;
     const s = Math.sin(z.ph), amp = moving ? 1 : 0;
-    if (z.is3d) {
+    if (z.is3d && z.mixer && (z.acts.walk || z.acts.attack)) {
+      zAnim(z, dt, moving);                        // animações gravadas no modelo
+    } else if (z.is3d) {
       // modelo 3D: balanço leve do corpo inteiro
       z.body.rotation.z = s * .06 * amp;
       z.body.position.y = Math.abs(s) * .04 * amp;
