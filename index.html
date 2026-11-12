@@ -2196,7 +2196,7 @@ function checkSoloWin() {
 /* MODELO 3D DO ZUMBI
    yaw: se o zumbi aparecer de COSTAS, troque entre Math.PI e 0.
    walk / attack / idle / death: nome exato da animação no .glb (null = detecta sozinho pelo nome; veja o console do navegador). */
-const ZMODEL = { yaw: Math.PI, walk: null, attack: null, idle: null, death: null };
+const ZMODEL = { yaw: Math.PI, walk: null, crawl: null, attack: null, idle: null, death: null };
 const ZCFG = {
   total: 50,            // zumbis por partida
   wave: 6,              // zumbis por onda
@@ -2205,7 +2205,10 @@ const ZCFG = {
   bonusEvery: 3,        // a cada N mortos...
   bonusCount: 4,        // ...surgem N zumbis em lugares aleatórios
   maxAlive: 20,         // máximo de zumbis na tela ao mesmo tempo (o resto espera na fila)
-  hp: 45, dmg: 8, range: 1.5, cd: 1.0, speedMin: 1.9, speedMax: 3.1,
+  hp: 140, dmg: 8, range: 1.5, cd: 1.0, speedMin: 1.9, speedMax: 3.1,     // hp = resistência (antes 45)
+  crawlAt: .25,         // com 25% da vida (ou menos) o zumbi cai no chão e se ARRASTA
+  crawlSpeed: .45,      // velocidade de arrastar (fração da velocidade normal)
+  crawlDmgMul: .7,      // o golpe dele fica mais fraco quando está se arrastando
   meleeDmg: 20,         // golpe corpo a corpo (só quando toda a munição acabar)
   fireCd: 420,          // ms entre disparos
   ammoPerItem: 20,      // cada item coletado vale N munições
@@ -2360,7 +2363,7 @@ function makeZombie() {
     model.updateMatrixWorld(true);
     const bb2 = realBox(model);
     model.position.set(-(bb2.min.x + bb2.max.x) / 2, -bb2.min.y, -(bb2.min.z + bb2.max.z) / 2);
-    root.add(model);
+    const pitch = new THREE.Group(); pitch.add(model); root.add(pitch);      // 'pitch' deita o zumbi no chão quando ele se arrasta
     // coleta materiais para o flash de dano
     const mats = [];
     model.traverse(o => {
@@ -2376,14 +2379,17 @@ function makeZombie() {
     if (clips.length) {
       if (!makeZombie.logged) { makeZombie.logged = true; console.log('Zumbi - animações do modelo:', clips.map(c => c.name).join(', ')); }
       mixer = new THREE.AnimationMixer(model);
-      const pick = (k, re) => { const c = ZMODEL[k] ? clips.find(x => x.name === ZMODEL[k]) : clips.find(x => re.test(x.name)); if (c) acts[k] = mixer.clipAction(c); };
-      pick('walk', /walk|run|shamble|crawl|limp|andar|corr|move/i);
-      pick('attack', /attack|hit|punch|bite|swipe|claw|slash|strike|atac|bater/i);
-      pick('idle', /idle|stand|breath|wait|parad/i);
-      pick('death', /die|death|dead|fall|morr|morte/i);
-      if (!acts.walk) { const c = clips.find(x => !/attack|hit|punch|bite|swipe|claw|death|die|dead|idle/i.test(x.name)) || clips[0]; if (c) acts.walk = mixer.clipAction(c); }
+      const CRAWL = /crawl|drag|arrast|creep|prone|rastej/i;
+      const find = (list, ex) => { for (const re of list) { const c = clips.find(x => re.test(x.name) && !(ex && ex.test(x.name))); if (c) return c; } return null; };
+      const pick = (k, list, ex) => { const c = ZMODEL[k] ? clips.find(x => x.name === ZMODEL[k]) : find(list, ex); if (c) acts[k] = mixer.clipAction(c); };
+      pick('walk', [/walk|shamble|limp|andar|caminh/i, /run|corr/i, /move/i], CRAWL);      // andar em pé (nunca o de se arrastar)
+      pick('crawl', [CRAWL]);                                                                // se arrastar (vida quase no fim)
+      pick('attack', [/attack|hit|punch|bite|swipe|claw|slash|strike|atac|bater/i]);
+      pick('idle', [/idle|stand|breath|wait|parad/i]);
+      pick('death', [/die|death|dead|fall|morr|morte/i]);
+      if (!acts.walk && !acts.crawl) { const c = clips.find(x => !/attack|hit|punch|bite|swipe|claw|death|die|dead|idle/i.test(x.name)) || clips[0]; if (c) acts.walk = mixer.clipAction(c); }
     }
-    return { root, body: model, legL: dummy, legR: dummy, armL: dummy, armR: dummy, mats, is3d: true, mixer, acts, cur: '' };
+    return { root, body: model, pitch, legL: dummy, legR: dummy, armL: dummy, armR: dummy, mats, is3d: true, mixer, acts, cur: '' };
   }
   // fallback: zumbi de caixas (original)
   if (!Z.geo) {
@@ -2428,7 +2434,7 @@ function zPickSpot(kind) {
 function spawnZ(kind) {
   const s = zPickSpot(kind); if (!s) return false;
   const m = makeZombie(); m.root.position.set(s[0], 0, s[1]); m.root.rotation.y = Math.random() * 6.28; scene.add(m.root);
-  Object.assign(m, { pos: m.root.position, hp: ZCFG.hp, dead: false, deadT: 0, flash: 0, cd: Math.random() * .6, atk: -1, atkHit: false,
+  Object.assign(m, { pos: m.root.position, hp: ZCFG.hp, maxHp: ZCFG.hp, crawl: false, prone: 0, dead: false, deadT: 0, flash: 0, cd: Math.random() * .6, atk: -1, atkHit: false,
     stuck: 0, side: Math.random() < .5 ? 1 : -1, ph: Math.random() * 6.28, speed: ZCFG.speedMin + Math.random() * (ZCFG.speedMax - ZCFG.speedMin) });
   Z.list.push(m); burst(new THREE.Vector3(s[0], .8, s[1]), 0x84cc16, 14);
   return true;
@@ -2445,6 +2451,10 @@ function zDamage(z, dmg, kx, kz) {
   z.hp -= dmg; z.flash = 1;
   const l = Math.hypot(kx, kz) || 1; move(z.pos, kx / l * .5, kz / l * .5, .4);
   beep(130, .08, 'sawtooth'); burst(new THREE.Vector3(z.pos.x, 1.2, z.pos.z), 0x84cc16, 10);
+  if (z.hp > 0 && !z.crawl && z.hp <= z.maxHp * ZCFG.crawlAt) {        // quase morto: cai no chão e se arrasta
+    z.crawl = true; z.speed *= ZCFG.crawlSpeed; z.cd = Math.max(z.cd, .6); z.atk = -1;
+    beep(70, .2, 'sawtooth'); burst(new THREE.Vector3(z.pos.x, .4, z.pos.z), 0x84cc16, 14);
+  }
   if (z.hp <= 0) zKill(z);
 }
 function zKill(z) {
@@ -2487,18 +2497,26 @@ function zNav(p, tx, tz) {
 
 /* animações do zumbi 3D: andar / atacar / parado, com transição suave */
 function zAnim(z, dt, moving) {
-  const A = z.acts;
-  const want = (z.atk >= 0 && A.attack) ? 'attack' : moving ? 'walk' : (A.idle ? 'idle' : 'walk');
-  if (z.cur !== want && A[want]) {
+  const A = z.acts, avg = (ZCFG.speedMin + ZCFG.speedMax) / 2;
+  let want = (z.atk >= 0 && A.attack) ? 'attack' : '';
+  if (!want) {
+    if (z.crawl && A.crawl) want = 'crawl';
+    else if (moving) want = A.walk ? 'walk' : (A.crawl && z.crawl ? 'crawl' : '');
+    else want = A.idle ? 'idle' : (z.crawl && A.crawl) ? 'crawl' : (A.walk ? 'walk' : '');
+  }
+  if (want && z.cur !== want && A[want]) {
     const a = A[want], prev = A[z.cur];
     a.reset(); a.enabled = true; a.setEffectiveWeight(1);
     if (want === 'attack') { a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = true; } else a.setLoop(THREE.LoopRepeat, Infinity);
     a.play(); if (prev && prev !== a) prev.crossFadeTo(a, .2, false);
     z.cur = want;
   }
-  if (want === 'walk' && A.walk) A.walk.setEffectiveTimeScale(Math.min(1.6, Math.max(.6, z.speed / ((ZCFG.speedMin + ZCFG.speedMax) / 2))));
-  if (want === 'attack' && A.attack) A.attack.setEffectiveTimeScale(Math.max(.5, A.attack.getClip().duration / .6));   // o golpe dura ~0,6 s, com o dano em 0,3 s
-  if (want === 'walk' && !moving && !A.idle && A.walk) A.walk.setEffectiveTimeScale(0);                                // sem clip de parado: congela a pose
+  const cur = A[want];
+  if (cur && (want === 'walk' || want === 'crawl')) cur.setEffectiveTimeScale(moving || A.idle ? Math.min(1.6, Math.max(.5, z.speed / (z.crawl ? avg * ZCFG.crawlSpeed : avg))) : 0);   // sem clip de parado: congela a pose
+  if (cur && want === 'attack') cur.setEffectiveTimeScale(Math.max(.5, cur.getClip().duration / .6));                // o golpe dura ~0,6 s, com o dano em 0,3 s
+  if (!A.walk && !(z.crawl && A.crawl)) {                                                                            // sem clip de andar: balanço do corpo
+    const sw = moving ? Math.sin(z.ph) : 0; z.body.rotation.z = sw * .06; z.body.position.y = Math.abs(sw) * .04;
+  }
   z.mixer.update(dt);
 }
 function zUpdate(dt, t) {
@@ -2523,7 +2541,7 @@ function zUpdate(dt, t) {
         if (!z.deadAnim) { z.deadAnim = true; if (z.acts.death) { const d = z.acts.death; Object.values(z.acts).forEach(a => { if (a !== d) a.fadeOut(.1); }); d.reset(); d.enabled = true; d.setEffectiveWeight(1); d.setLoop(THREE.LoopOnce, 1); d.clampWhenFinished = true; d.play(); } else z.mixer.stopAllAction(); }
         z.mixer.update(dt);
       }
-      if (!(z.acts && z.acts.death)) z.body.rotation.x = Math.min(Math.PI / 2, z.deadT * 5);
+      if (!(z.acts && z.acts.death) && !(z.crawl && z.pitch)) z.body.rotation.x = Math.min(Math.PI / 2, z.deadT * 5);   // quem já estava no chão não cai de novo
       if (z.deadT > 1.4) p.y = -(z.deadT - 1.4) * .6;
       if (z.deadT > 2.4) { scene.remove(z.root); z.mats.forEach(m => m.dispose()); Z.list.splice(i, 1); }
       continue;
@@ -2552,14 +2570,20 @@ function zUpdate(dt, t) {
       }
       if (z.atk >= 0) {
         z.atk += dt;
-        if (z.atk > .3 && !z.atkHit) { z.atkHit = true; if (Math.hypot(cx - p.x, cz - p.z) < ZCFG.range + .5) hurt(ZCFG.dmg); }
+        if (z.atk > .3 && !z.atkHit) { z.atkHit = true; if (Math.hypot(cx - p.x, cz - p.z) < ZCFG.range + .5) hurt(ZCFG.dmg * (z.crawl ? ZCFG.crawlDmgMul : 1)); }
         if (z.atk > .6) z.atk = -1;
       }
+    }
+    // arrastando: sem clip próprio de se arrastar, o corpo deita de bruços no chão
+    if (z.pitch) {
+      const want = (z.crawl && !(z.acts && z.acts.crawl)) ? 1 : 0;
+      z.prone += (want - z.prone) * Math.min(1, dt * 4);
+      z.pitch.rotation.x = -1.4 * z.prone; z.pitch.position.y = .2 * z.prone;
     }
     // animação
     if (moving) z.ph += dt * z.speed * 3.2;
     const s = Math.sin(z.ph), amp = moving ? 1 : 0;
-    if (z.is3d && z.mixer && (z.acts.walk || z.acts.attack)) {
+    if (z.is3d && z.mixer && (z.acts.walk || z.acts.attack || z.acts.crawl)) {
       zAnim(z, dt, moving);                        // animações gravadas no modelo
     } else if (z.is3d) {
       // modelo 3D: balanço leve do corpo inteiro
