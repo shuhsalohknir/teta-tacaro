@@ -536,8 +536,21 @@ io.on('connection', (socket) => {
   // ---- Voz do time (WebRTC signaling) ----
   // O cliente envia { to, type, sdp/candidate, from } e o servidor só retransmite para o destinatário.
   socket.on('voiceSignal', (data) => {
-    if (!data || !data.to) return;
-    // só retransmite se o destinatário estiver em alguma sala que o remetente também está
+    if (!data || !data.to || !data.from) return;
+    // Encontra a sala do remetente e verifica se o destinatário está na mesma sala e no mesmo time
+    let senderRoom = null, senderTeam = null, targetTeam = null;
+    for (const roomName in rooms) {
+      const room = rooms[roomName];
+      if (room.players[socket.id]) {
+        senderRoom = roomName;
+        senderTeam = room.players[socket.id].team;
+        if (room.players[data.to]) targetTeam = room.players[data.to].team;
+        break;
+      }
+    }
+    if (!senderRoom || targetTeam === null || senderTeam !== targetTeam) return;  // só mesmo time
+    // retransmite com o from correto
+    data.from = socket.id;
     io.to(data.to).emit('voiceSignal', data);
   });
 });

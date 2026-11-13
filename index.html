@@ -118,7 +118,8 @@
   #bossHp { height: 10px; margin: 4px 0 2px; background: rgba(0,0,0,.6); border: 2px solid #bae6fd; border-radius: 6px; overflow: hidden; }
   #bossFill { height: 100%; width: 100%; background: linear-gradient(#7dd3fc, #0284c7); }
   #pickBtn { position: absolute; bottom: 90px; left: 50%; transform: translateX(-50%); padding: 12px 22px; border: 2px solid #fde047; border-radius: 12px; background: rgba(0,0,0,.75); color: #fde047; font-weight: bold; font-size: 15px; z-index: 35; display: none; }
-  #invBtn { position: absolute; top: 10px; right: 10px; width: 48px; height: 48px; border-radius: 12px; border: 2px solid #fff; background: rgba(0,0,0,.6); font-size: 24px; z-index: 35; }
+  #invBtn { position: absolute; bottom: 160px; right: 40px; width: 56px; height: 56px; border-radius: 12px; border: 2px solid #fff; background: rgba(0,0,0,.6); font-size: 26px; z-index: 35; display: none; }
+  #micBtn { position: absolute; bottom: 160px; right: 110px; width: 56px; height: 56px; border-radius: 12px; border: 2px solid #fff; background: rgba(0,0,0,.6); font-size: 26px; z-index: 35; display: none; }
   #inv { display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: min(92vw, 420px); max-height: 90vh; overflow: auto; background: rgba(15,23,42,.96); color: #fff; border: 2px solid #475569; border-radius: 16px; padding: 16px; z-index: 60; }
   #inv h3 { margin: 0 0 10px; } #slots { display: grid; grid-template-columns: repeat(3,1fr); gap: 8px; }
   .slot { padding: 12px 4px; min-height: 64px; border-radius: 10px; border: 2px solid #475569; background: #1e293b; color: #fff; font-size: 13px; }
@@ -147,11 +148,13 @@
   #item { color: var(--ouro1); bottom: 56px; letter-spacing: .5px; text-shadow: 0 1px 3px #000, 0 0 8px rgba(0,0,0,.8); }
 
   /* botões do toque */
-  #atkBtn, #throwBtn, #invBtn, #pickBtn { font-family: inherit; cursor: pointer; box-shadow: 0 5px 0 rgba(0,0,0,.45), 0 8px 14px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.3); transition: transform .08s, box-shadow .08s, filter .15s; }
-  #atkBtn:active, #throwBtn:active, #invBtn:active, #pickBtn:active { transform: translateY(3px); box-shadow: 0 2px 0 rgba(0,0,0,.45), 0 4px 8px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.3); }
+  #atkBtn, #throwBtn, #invBtn, #micBtn, #pickBtn { font-family: inherit; cursor: pointer; box-shadow: 0 5px 0 rgba(0,0,0,.45), 0 8px 14px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.3); transition: transform .08s, box-shadow .08s, filter .15s; }
+  #atkBtn:active, #throwBtn:active, #invBtn:active, #micBtn:active, #pickBtn:active { transform: translateY(3px); box-shadow: 0 2px 0 rgba(0,0,0,.45), 0 4px 8px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.3); }
   #atkBtn { background: linear-gradient(var(--ouro1), var(--ouro2)); color: #3b2410; border: 3px solid #8a5a1f; letter-spacing: 1px; text-shadow: 0 1px 0 rgba(255,255,255,.3); }
   #throwBtn { background: linear-gradient(var(--marrom1), var(--marrom2)); color: var(--creme); border: 3px solid var(--borda); text-shadow: 0 1px 2px rgba(0,0,0,.6); }
   #invBtn { background: linear-gradient(var(--marrom1), var(--marrom2)); border: 2px solid var(--borda); color: var(--creme); }
+  #micBtn { background: linear-gradient(var(--marrom1), var(--marrom2)); border: 2px solid var(--borda); color: var(--creme); }
+  #micBtn.on { background: linear-gradient(#4ade80, #16a34a); border-color: #22c55e; color: #fff; }
   #pickBtn { background: linear-gradient(var(--ouro1), var(--ouro2)); color: #3b2410; border: 2px solid #8a5a1f; letter-spacing: 1.5px; text-transform: uppercase; text-shadow: 0 1px 0 rgba(255,255,255,.3); }
   #joystick-zone { background: rgba(35,21,9,.35); border: 2px solid rgba(232,189,78,.5); box-shadow: inset 0 0 18px rgba(0,0,0,.45); }
   #joystick-thumb { background: linear-gradient(var(--ouro1), var(--ouro2)); border: 2px solid #8a5a1f; box-shadow: 0 3px 6px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.4); }
@@ -257,6 +260,7 @@
   <button id="throwBtn">ARREMESSAR</button>
   <button id="pickBtn">PEGAR</button>
   <button id="invBtn">🎒</button>
+  <button id="micBtn" title="Ligar/desligar microfone (só o time ouve)">🎤</button>
   <div id="inv"><h3>🎒 Inventário (máx. 6)</h3><div id="slots"></div>
     <div id="invBtns"><button id="combBtn">Combinar</button><button id="eqBtn">Equipar</button><button id="closeInv">Fechar</button></div>
     <div id="recipes"></div></div>
@@ -1038,23 +1042,125 @@ function startOnlineGame() { if (socket) socket.emit('startGame', { room: curren
 function startSolo() { zMode = false; startGame(true); }
 function startZombie() { zMode = true; startGame(true); }
 
+
+/* ===================== VOZ DO TIME (WebRTC) ===================== */
+let voiceStream = null, voicePeers = {}, voiceMuted = true, voiceReady = false;
+const ICE_SERVERS = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }] };
+
+function voiceInit() {
+  if (isSolo || voiceReady) return;
+  voiceReady = true;
+  const btn = $('micBtn');
+  if (btn) {
+    btn.style.display = 'block';
+    btn.classList.toggle('on', !voiceMuted);
+    btn.textContent = voiceMuted ? '🎤' : '🔊';
+    btn.onclick = () => {
+      voiceMuted = !voiceMuted;
+      if (voiceStream) voiceStream.getAudioTracks().forEach(t => t.enabled = !voiceMuted);
+      btn.classList.toggle('on', !voiceMuted);
+      btn.textContent = voiceMuted ? '🎤' : '🔊';
+      toast(voiceMuted ? 'Microfone desligado' : 'Microfone ligado — só o time ouve');
+    };
+  }
+  // também mostra inventário (exceto zumbi que usa barra de munição)
+  if (!zMode && $('invBtn')) $('invBtn').style.display = 'block';
+  navigator.mediaDevices.getUserMedia({ audio: true, video: false }).then(stream => {
+    voiceStream = stream;
+    voiceStream.getAudioTracks().forEach(t => t.enabled = !voiceMuted);
+    updateVoicePeers();
+  }).catch(e => {
+    console.warn('Microfone indisponível', e);
+    toast('Permita o microfone para falar com o time');
+  });
+}
+
+function updateVoicePeers() {
+  if (!voiceStream || isSolo || !socket) return;
+  const allies = (lobbyPlayers || []).filter(p => p.id !== myId && isAlly(p.id)).map(p => p.id);
+  // fecha conexões com quem saiu ou não é mais aliado
+  Object.keys(voicePeers).forEach(id => {
+    if (!allies.includes(id)) {
+      try { voicePeers[id].pc.close(); } catch(e) {}
+      if (voicePeers[id].audio) voicePeers[id].audio.remove();
+      delete voicePeers[id];
+    }
+  });
+  // cria com novos aliados (só se meu id for menor para evitar offer duplo, ou sempre offer se menor)
+  allies.forEach(id => {
+    if (!voicePeers[id] && myId < id) createVoicePeer(id, true);
+    else if (!voicePeers[id]) createVoicePeer(id, false);  // espera offer
+  });
+}
+
+function createVoicePeer(targetId, isOffer) {
+  if (voicePeers[targetId]) return;
+  const pc = new RTCPeerConnection(ICE_SERVERS);
+  voicePeers[targetId] = { pc, audio: null };
+  voiceStream.getTracks().forEach(track => pc.addTrack(track, voiceStream));
+  pc.onicecandidate = e => {
+    if (e.candidate) socket.emit('voiceSignal', { to: targetId, type: 'ice', candidate: e.candidate, from: myId });
+  };
+  pc.ontrack = e => {
+    const audio = document.createElement('audio');
+    audio.autoplay = true; audio.srcObject = e.streams[0];
+    document.body.appendChild(audio);
+    voicePeers[targetId].audio = audio;
+  };
+  if (isOffer) {
+    pc.createOffer().then(offer => pc.setLocalDescription(offer)).then(() => {
+      socket.emit('voiceSignal', { to: targetId, type: 'offer', sdp: pc.localDescription, from: myId });
+    }).catch(console.warn);
+  }
+}
+
+function handleVoiceSignal(data) {
+  if (!data || data.from === myId || !voiceStream) return;
+  if (!isAlly(data.from)) return;  // extra safety
+  let peer = voicePeers[data.from];
+  if (!peer && data.type === 'offer') {
+    createVoicePeer(data.from, false);
+    peer = voicePeers[data.from];
+  }
+  if (!peer) return;
+  const pc = peer.pc;
+  if (data.type === 'offer') {
+    pc.setRemoteDescription(new RTCSessionDescription(data.sdp)).then(() => pc.createAnswer()).then(answer => pc.setLocalDescription(answer)).then(() => {
+      socket.emit('voiceSignal', { to: data.from, type: 'answer', sdp: pc.localDescription, from: myId });
+    }).catch(console.warn);
+  } else if (data.type === 'answer') {
+    pc.setRemoteDescription(new RTCSessionDescription(data.sdp)).catch(console.warn);
+  } else if (data.type === 'ice' && data.candidate) {
+    pc.addIceCandidate(new RTCIceCandidate(data.candidate)).catch(console.warn);
+  }
+}
+
+function voiceCleanup() {
+  Object.values(voicePeers).forEach(p => { try { p.pc.close(); } catch(e) {} if (p.audio) p.audio.remove(); });
+  voicePeers = {};
+  if (voiceStream) { voiceStream.getTracks().forEach(t => t.stop()); voiceStream = null; }
+  voiceReady = false;
+  const btn = $('micBtn'); if (btn) btn.style.display = 'none';
+}
+
 function bindSocket(s) {
   s.on('joined', d => {
     myId = d.id; currentRoom = d.room; lobbyMode = d.mode || 'versus'; zMode = lobbyMode === 'zombie';
     $('roomMenu').style.display = 'none'; $('lobby').style.display = 'flex';
     $('currentRoom').textContent = currentRoom; updateLobby(d.players);
   });
-  s.on('updatePlayers', p => { updateLobby(p); if (scene) p.forEach(addOther); });
+  s.on('updatePlayers', p => { updateLobby(p); if (scene) p.forEach(addOther); if (voiceReady) updateVoicePeers(); });
   s.on('playerMoved', d => {
     const o = others[d.id]; if (!o) return;
     o.position.set(d.x, 0, d.z); o.rotation.y = d.rotY || 0;
   });
-  s.on('playerLeft', id => { if (others[id]) { scene.remove(others[id]); delete others[id]; } });
+  s.on('playerLeft', id => { if (others[id]) { scene.remove(others[id]); delete others[id]; } if (voicePeers[id]) { try { voicePeers[id].pc.close(); } catch(e) {} if (voicePeers[id].audio) voicePeers[id].audio.remove(); delete voicePeers[id]; } });
   s.on('gameStart', d => {
     mySpawn = (d && d.spawns && d.spawns[myId]) || null; hostId = d ? d.hostId : null;
     teamMode = !!(d && d.teamMode); zMode = !!(d && d.mode === 'zombie'); if (d && d.zTotal) ZCFG.total = d.zTotal;
     const tg = $('teamTag'); if (tg) tg.textContent = teamMode ? ' · TIME ' + TEAM_NAME[myTeam].toUpperCase() : '';
     startGame(false);
+    setTimeout(voiceInit, 800);  // dá tempo do jogo abrir
   });
   s.on('monsterHost', d => { hostId = d.id; });
   s.on('monsterWake', () => { if (monster) { if (!monster.awake) wakeMonster(false); } else pendingWake = true; });
@@ -1074,6 +1180,7 @@ function bindSocket(s) {
     if (d.by === myId) shake = Math.max(shake, .7);
   });
   s.on('playerEquip', d => { const o = others[d.id]; if (o) actorOf(o).setWeapon(d.weapon === null || d.weapon === undefined ? null : makeItem(d.weapon)); });
+  s.on('voiceSignal', handleVoiceSignal);
   s.on('gameOver', d => { if (d.zombie) { endGame(!!d.win); return; } if (d.teamMode ? d.winnerTeam === myTeam : d.winner === myId) endGame(true); });
   /* ---- Ataque Zumbi cooperativo ---- */
   s.on('zSpawnReq', d => {                       // o servidor pede ao anfitrião um zumbi novo
@@ -1244,6 +1351,10 @@ async function _startGame(solo) {
   const gameDiv = $('game');
   gameDiv.style.display = 'block';
   if (isTouch) { $('joystick-zone').style.display = 'block'; $('atkBtn').style.display = 'block'; $('throwBtn').style.display = 'block'; $('hint').textContent = 'Joystick move · arraste a tela para olhar'; }
+  if (!isSolo) {
+    if (!zMode && $('invBtn')) $('invBtn').style.display = 'block';
+    if ($('micBtn')) $('micBtn').style.display = 'block';
+  } else if (!zMode && $('invBtn')) $('invBtn').style.display = 'block';
 
   setLoad(5, 'Carregando modelos…'); await nextPaint(); onLoadStep = f => setLoad(5 + f * 30, 'Carregando modelos…');
   try { await loadModels(); } catch(e) { console.warn('Erro carregando modelos', e); }
@@ -1342,7 +1453,7 @@ function bindInput(cv) {
 }
 
 function endGame(won) {
-  if (gameOver) return; gameOver = true; pararMusica();
+  if (gameOver) return; gameOver = true; pararMusica(); voiceCleanup();
   $('endTitle').textContent = won ? 'VITÓRIA!' : (zCoop() ? 'DERROTA' : 'ELIMINADO');
   $('endSubtitle').textContent = zMode ? (won ? (zCoop() ? 'Vocês derrotaram todos os ' + ZCFG.total + ' zumbis!' : 'Você derrotou todos os ' + ZCFG.total + ' zumbis!') : 'Os zumbis tomaram o mercado') : (won ? 'Você venceu o mercado!' : 'Você foi eliminado');
   $('statEnemies').textContent = kills; $('endScreen').style.display = 'flex';
