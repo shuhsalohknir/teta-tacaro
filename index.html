@@ -388,7 +388,8 @@ function loadModels() {
     ['goblin', 'models/goblin.obj', objLoader, g => { try { bendGoblinArms(g); } catch (e) { console.warn('goblin braços', e); } return g; }],
     ['broom', 'models/broom.obj', objLoader, g => g],
     ['bottle', 'models/bottle.obj', objLoader, g => g],
-    ['bread', 'models/bread.obj', objLoader, g => g],
+    // baguete: tenta, nesta ordem, GLB, FBX (bread ou baguete) e por último o .obj antigo. Pode ficar só com o arquivo novo na pasta models/
+    ['bread', [['models/bread.glb', gltfLoader, g => g.scene], ['models/bread.fbx', fbxLoader, g => g], ['models/baguete.glb', gltfLoader, g => g.scene], ['models/baguete.fbx', fbxLoader, g => g], ['models/bread.obj', objLoader, g => g]]],
     ['pan', 'models/pan_poly.obj', objLoader, g => g],
     ['ham', 'models/ham.obj', objLoader, g => g],
     ['toilet', 'models/toilet.obj', objLoader, g => g],
@@ -402,11 +403,16 @@ function loadModels() {
   const imgs = ['car', 'tree'].map(n => new Promise(r => { const im = new Image(); im.onload = () => { texImg[n] = im; step(); r(); }; im.onerror = () => { console.warn('✗ textura', n); step(); r(); }; im.src = 'models/' + n + '_texture.png'; }));
   return Promise.all(files.map(([name, path, loader, extract]) =>
     new Promise(resolve => {
-      loader.load(path,
-        g => { try { models[name] = extract(g); console.log('✓', name); } catch (e) { console.warn('✗', name, e); } step(); resolve(); },
-        undefined,
-        err => { console.warn('✗', name); step(); resolve(); }
-      );
+      const alts = Array.isArray(path) ? path : [[path, loader, extract]];   // várias opções de arquivo: usa a primeira que existir
+      const next = i => {
+        if (i >= alts.length) { console.warn('✗', name); step(); resolve(); return; }
+        const [pp, ll, ee] = alts[i];
+        ll.load(pp,
+          g => { try { models[name] = ee(g); console.log('✓', name, pp); } catch (e) { console.warn('✗', name, e); } step(); resolve(); },
+          undefined,
+          () => next(i + 1));
+      };
+      next(0);
     })
   ).concat(imgs)).then(() => {
     ['businessman', 'adventurer', 'witch'].forEach(n => { try { prepareClips(n); } catch (e) { console.warn('clips', n, e); } });
@@ -3026,18 +3032,20 @@ function buildMap(){
     return gondMats[n]=tx('corredor_'+String(n).padStart(2,'0'),m);
   };
   const gondCap=n=>gondCaps[n]||(gondCaps[n]=std(new THREE.Color().setHSL(((n*37)%360)/360,.55,.42),{roughness:.5}));
-  const plinthM=std(0x3f4650,{roughness:.8});
+  const plinthM=std(0x3f4650,{roughness:.8}),gondCore=std(0xd1d5db,{roughness:.8});
   const gondolaFace=(x,dir,cz,len,h,n)=>{
     const ph=h-.16,pg=new THREE.PlaneGeometry(len,ph),uv=pg.attributes.uv;
     for(let i=0;i<uv.count;i++)uv.setXY(i,uv.getX(i)*len/GOND_TILE,uv.getY(i));
     const pm=new THREE.Mesh(pg,gondMat(n));
-    pm.rotation.y=dir>0?Math.PI/2:-Math.PI/2;pm.position.set(x+dir*.49,.16+ph/2,cz);pm.receiveShadow=true;scene.add(pm);
+    pm.rotation.y=dir>0?Math.PI/2:-Math.PI/2;pm.position.set(x+dir*.505,.16+ph/2,cz);pm.receiveShadow=true;scene.add(pm);
+    box(.98,h,len,gondCore,x,h/2,cz,false,false);                       // miolo liso (a foto cobre a frente; sem tábuas, montantes nem tiras)
     box(.1,.28,len,gondCap(n),x+dir*.5,2.2+.14,cz,false,false);        // faixa colorida do topo (cor do corredor)
     [-1,1].forEach(s=>box(1.02,h,.06,gondCap(n),x,h/2,cz+s*(len/2+.03),false,true));   // cabeceiras
   };
   const shelf=(x,z0,z1,dir,pal,h=GOND_TOP,ai=0)=>{
     box(1.02,.16,Math.abs(z1-z0),plinthM,x,.08,(z0+z1)/2,false,false);   // rodapé da gôndola
-    const cz=(z0+z1)/2,len=Math.abs(z1-z0);colliders.push({x1:x-.5,x2:x+.5,z1:cz-len/2,z2:cz+len/2});const nb=Math.max(1,Math.round(len/1.43)),bl=len/nb,zm=Math.min(z0,z1),D=1,xc=x;for(let k=0;k<nb;k++){const zc=zm+bl*(k+.5);for(let y=.25;y<h;y+=.5)IB.push([xc,y,zc,D,.05,bl]);IB.push([xc,h+.025,zc,D+.04,.05,bl],[x-dir*.47,h/2,zc,.04,h,bl]);}for(let k=0;k<=nb;k++)IB.push([x+dir*.46,h/2,zm+bl*k,.08,h,.08],[x-dir*.46,h/2,zm+bl*k,.08,h,.08]);for(let y=.25;y<h;y+=.5)BD.push([x+dir*.5,y+.03,cz,.03,.08,len,0xdc2626]);box(.08,.1,len,beam,x-.5,2.36,cz,false,false);box(.08,.1,len,beam,x+.5,2.36,cz,false,false);for(let z=Math.min(z0,z1)+.5;z<Math.max(z0,z1)-.4;z+=.95){RP.push([x,2.39,z]);if(Math.floor((z-Math.min(z0,z1))/.95)%3===0)PO.push([x+dir*.52,z]);const k=1+((Math.random()*2)|0);for(let l=0;l<k;l++)RB.push([x,2.81+l*.7,z,.92,.7,.82,Math.random()<.25?0x93c5fd:bx[(Math.random()*3)|0]]);}
+    const cz=(z0+z1)/2,len=Math.abs(z1-z0);colliders.push({x1:x-.5,x2:x+.5,z1:cz-len/2,z2:cz+len/2});const nb=Math.max(1,Math.round(len/1.43)),bl=len/nb,zm=Math.min(z0,z1),D=1,xc=x;if(!ai)for(let k=0;k<nb;k++){const zc=zm+bl*(k+.5);for(let y=.25;y<h;y+=.5)IB.push([xc,y,zc,D,.05,bl]);IB.push([xc,h+.025,zc,D+.04,.05,bl],[x-dir*.47,h/2,zc,.04,h,bl]);}if(!ai)for(let k=0;k<=nb;k++)IB.push([x+dir*.46,h/2,zm+bl*k,.08,h,.08],[x-dir*.46,h/2,zm+bl*k,.08,h,.08]);   // montantes laranja: só nas gôndolas sem foto (a foto já tem as divisórias)
+    if(!ai)for(let y=.25;y<h;y+=.5)BD.push([x+dir*.5,y+.03,cz,.03,.08,len,0xdc2626]);box(.08,.1,len,beam,x-.5,2.36,cz,false,false);box(.08,.1,len,beam,x+.5,2.36,cz,false,false);for(let z=Math.min(z0,z1)+.5;z<Math.max(z0,z1)-.4;z+=.95){RP.push([x,2.39,z]);if(Math.floor((z-Math.min(z0,z1))/.95)%3===0)PO.push([x+dir*.52,z]);const k=1+((Math.random()*2)|0);for(let l=0;l<k;l++)RB.push([x,2.81+l*.7,z,.92,.7,.82,Math.random()<.25?0x93c5fd:bx[(Math.random()*3)|0]]);}
     if(ai)gondolaFace(x,dir,cz,len,h,ai);
     else for(let z=Math.min(z0,z1)+.3;z<Math.max(z0,z1)-.2;z+=.6)for(let y=.45;y<h;y+=.5){P.push([x+dir*(isTouch?.1:.27),y,z,.8+Math.random()*.5,pal[(Math.random()*pal.length)|0],Math.random()<.35]);if(!isTouch)P.push([x-dir*.2,y,z,.8+Math.random()*.5,pal[(Math.random()*pal.length)|0],Math.random()<.35]);}
   };
