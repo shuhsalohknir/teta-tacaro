@@ -389,7 +389,7 @@ function loadModels() {
     ['broom', 'models/broom.obj', objLoader, g => g],
     ['bottle', 'models/bottle.obj', objLoader, g => g],
     // baguete: tenta, nesta ordem, GLB, FBX (bread ou baguete) e por último o .obj antigo. Pode ficar só com o arquivo novo na pasta models/
-    ['bread', [['models/bread.glb', gltfLoader, g => g.scene], ['models/bread.fbx', fbxLoader, g => g], ['models/baguete.glb', gltfLoader, g => g.scene], ['models/baguete.fbx', fbxLoader, g => g], ['models/bread.obj', objLoader, g => g]]],
+    ['bread', [['models/baguette.glb', gltfLoader, g => g.scene], ['models/baguette.fbx', fbxLoader, g => g], ['models/bread.glb', gltfLoader, g => g.scene], ['models/bread.fbx', fbxLoader, g => g], ['models/baguete.glb', gltfLoader, g => g.scene], ['models/baguete.fbx', fbxLoader, g => g], ['models/bread.obj', objLoader, g => g]]],
     ['pan', 'models/pan_poly.obj', objLoader, g => g],
     ['ham', 'models/ham.obj', objLoader, g => g],
     ['toilet', 'models/toilet.obj', objLoader, g => g],
