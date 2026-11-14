@@ -1843,7 +1843,8 @@ function updateFP(dt, t) {
 /* ---------- ARREMESSO ---------- */
 function throwItem() {
   if (zMode) { zFire(); return; }
-  if (gameOver || !started || fpAnim) return;
+  if (gameOver || !started) return;
+  if (fpBusy()) { queueAct(throwItem); return; }
   if (weapon === null) { toast('Nada equipado para arremessar'); return; }
   if (NO_THROW.includes(weapon)) { toast('A ' + ITEMS[weapon].n + ' não pode ser arremessada'); return; }
   if (KEEP_WEAPONS.includes(weapon)) { const now = performance.now(); if (now < fireReady) return; fireReady = now + (weapon === 6 ? 1100 : 800); startFP('fire'); return; }
@@ -2316,10 +2317,21 @@ function spawnAI(){
   });
   spawnLoot();
 }
+/* toques rápidos: cada toque anima na hora; se cair dentro do mínimo entre golpes, fica na fila e sai assim que liberar */
+const ATK_CD=170;
+let actQ=null;
+function queueAct(fn){if(!actQ)actQ={t:performance.now(),fn};else actQ.fn=fn;}
+function drainAct(){
+  if(!actQ)return;
+  if(performance.now()-actQ.t>400){actQ=null;return;}
+  const q=actQ;actQ=null;q.fn();if(actQ)actQ.t=q.t;       // se ainda não pode, continua na fila (sem estender o prazo)
+}
+const fpBusy=()=>!!(fpAnim&&(fpAnim.kind==='throw'||fpAnim.kind==='fire')&&!fpAnim.released);   // arremesso/tiro ainda não saiu da mão
 function attack(){
   if(gameOver||!started||zDowned)return;
   if(zMode){zFire();return;}
-  const now=performance.now();if(now-lastAtk<450)return;lastAtk=now;
+  if(fpBusy()){queueAct(attack);return;}
+  const now=performance.now();if(now-lastAtk<ATK_CD){queueAct(attack);return;}lastAtk=now;
   startFP('swing');beep(220,.07);
   if(!isSolo){if(socket)socket.emit('attack',{room:currentRoom,weapon,dmg:30+(weapon!==null?ITEMS[weapon].d:0)});return;}
   setTimeout(()=>{if(gameOver)return;
@@ -2399,6 +2411,7 @@ function fxUpdate(dt,t){
   loot.forEach(o=>{if(o.taken){if(t-o.takenAt>=60)respawnLoot(o);return;}o.it.rotation.y=t*2;o.it.position.y=1.1+Math.sin(t*3+o.t)*.12;o.beam.material.opacity=.2+Math.sin(t*4)*.07;});
   updateFP(dt,t);
   shake=Math.max(0,shake-dt*3);
+  drainAct();
   updatePower(dt,t);
   flick.forEach(f=>{if(t>f.next){f.on=Math.random()>.4;f.next=t+(f.on?.15+Math.random()*1.6:.04+Math.random()*.12);}const k=f.pwr?pwrK:1;f.l.intensity=(f.on?f.b:f.b*.08)*k;f.m.color.setHex(f.on&&k>.3?f.c:0x2a2a2a);f.s.material.opacity=(f.on?.4:0)*k;});
 }
@@ -2436,7 +2449,7 @@ const ZCFG = {
   crawlSpeed: .45,      // velocidade de arrastar (fração da velocidade normal)
   crawlDmgMul: .7,      // o golpe dele fica mais fraco quando está se arrastando
   meleeDmg: 20,         // golpe corpo a corpo (só quando toda a munição acabar)
-  fireCd: 420,          // ms entre disparos
+  fireCd: 260,          // ms entre disparos
   ammoPerItem: 20,      // cada item coletado vale N munições
   startAmmo: 0,         // munição de cada tipo ao começar a partida
   projBonus: 25         // dano do projétil = dano do item (ITEMS) + este bônus (o mesmo do arremesso normal; 0 = só o valor do item)
@@ -2547,7 +2560,7 @@ function bazookaOnly() {                      // só a bazuca (sem vassoura). Ei
 /* ---------- ARMAS ---------- */
 function zFire() {
   if (gameOver || !started || zDowned) return;
-  const now = performance.now(); if (now < fireReady || fpAnim) return;
+  const now = performance.now(); if (fpBusy() || now < fireReady) { if (fpBusy() || fireReady - now < 400) queueAct(zFire); return; }
   if (Z.ammo[Z.sel] <= 0) {
     const nx = Z.ammo.findIndex(a => a > 0);
     if (nx < 0) { zMelee(); return; }
@@ -2576,7 +2589,7 @@ function zRemoteShot(d) {                     // tiro de outro jogador: só o vi
   beep(150, .08, 'sawtooth');
 }
 function zMelee() {                           // sem munição nenhuma: não trava o jogo
-  const now = performance.now(); if (now - lastAtk < 450) return; lastAtk = now;
+  const now = performance.now(); if (now - lastAtk < ATK_CD) { queueAct(zMelee); return; } lastAtk = now;
   startFP('swing'); beep(220, .07); toast('Sem munição! Pegue itens no chão (E) — corpo a corpo');
   setTimeout(() => {
     if (gameOver) return;
