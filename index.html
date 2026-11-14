@@ -3646,15 +3646,17 @@ function placeTree(x, z, night) {
   const h = 4.8 + hVar * 2.0;
   const w = h * 0.65;
   const group = new THREE.Group();
-  // 3 planos cruzados (60° entre cada um)
-  for (let i = 0; i < 3; i++) {
+  // 2 planos em X (90°) — estilo clássico, completamente fixos
+  for (let i = 0; i < 2; i++) {
     const plane = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
-    plane.rotation.y = (i * Math.PI) / 3;          // 0°, 60°, 120°
+    plane.rotation.y = i * Math.PI / 2;          // 0° e 90°
     plane.position.y = h * 0.48;
     plane.castShadow = false;
     plane.receiveShadow = false;
     group.add(plane);
   }
+  // Rotação fixa aleatória para cada árvore (não muda depois)
+  group.rotation.y = (Math.abs(Math.sin(x * 7.3 + z * 3.1)) % 1) * Math.PI;
   group.position.set(x, 0, z);
   scene.add(group);
   colliders.push({ x1: x - 0.35, x2: x + 0.35, z1: z - 0.35, z2: z + 0.35 });
