@@ -3622,30 +3622,41 @@ function placeCar(x, z, hex, ry) {
   const mat = new THREE.MeshStandardMaterial({ map: t || null, color: (t && t === carTexCache[hex]) ? 0xffffff : hex, roughness: .4, metalness: .25 });
   return dropModel('car', mat, x, z, ry || 0, s => 4.4 / Math.max(s.x, s.z), false);
 }
-const treeBillboards = {};
+const treeMats = {};
 function placeTree(x, z, night) {
-  // Billboard PNG (sempre de frente para a câmera). Coloque models/tree_billboard.png
+  // Árvore com 3 planos em estrela (*) — estilo jogos antigos, não gira
   const key = night ? 'n' : 'd';
-  if (!treeBillboards[key]) {
+  if (!treeMats[key]) {
     const tex = new THREE.TextureLoader().load('models/tree_billboard.png', t => {
       t.colorSpace = THREE.SRGBColorSpace;
+      t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping;
       t.needsUpdate = true;
     });
-    treeBillboards[key] = new THREE.SpriteMaterial({
+    treeMats[key] = new THREE.MeshBasicMaterial({
       map: tex,
       transparent: true,
-      alphaTest: 0.12,
+      alphaTest: 0.15,
+      side: THREE.DoubleSide,
       depthWrite: false,
       color: night ? 0x8d9fb0 : 0xffffff
     });
   }
-  const sprite = new THREE.Sprite(treeBillboards[key]);
+  const mat = treeMats[key];
   const hVar = Math.abs(Math.sin(x * 12.9898 + z * 78.233) * 43758.5453) % 1;
   const h = 4.8 + hVar * 2.0;
-  sprite.scale.set(h * 0.65, h, 1);
-  sprite.position.set(x, h * 0.48, z);
-  sprite.castShadow = false;
-  scene.add(sprite);
+  const w = h * 0.65;
+  const group = new THREE.Group();
+  // 3 planos cruzados (60° entre cada um)
+  for (let i = 0; i < 3; i++) {
+    const plane = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
+    plane.rotation.y = (i * Math.PI) / 3;          // 0°, 60°, 120°
+    plane.position.y = h * 0.48;
+    plane.castShadow = false;
+    plane.receiveShadow = false;
+    group.add(plane);
+  }
+  group.position.set(x, 0, z);
+  scene.add(group);
   colliders.push({ x1: x - 0.35, x2: x + 0.35, z1: z - 0.35, z2: z + 0.35 });
   return true;
 }
