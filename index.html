@@ -109,6 +109,7 @@
   #joystick-zone { position: absolute; bottom: 40px; left: 30px; width: 130px; height: 130px; background: rgba(255,255,255,.08); border: 2px solid rgba(255,255,255,.3); border-radius: 50%; z-index: 30; display: none; touch-action: none; }
   #joystick-thumb { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 46px; height: 46px; background: rgba(255,255,255,.5); border-radius: 50%; }
   #atkBtn { position: absolute; bottom: 50px; right: 30px; width: 90px; height: 90px; border-radius: 50%; border: 3px solid #fff; background: rgba(239,68,68,.75); color: #fff; font-weight: bold; z-index: 30; display: none; }
+  #jumpBtn { position: absolute; bottom: 155px; right: 40px; width: 72px; height: 72px; border-radius: 50%; border: 3px solid #fff; background: rgba(34,197,94,.75); color: #fff; font-weight: bold; font-size: 12px; z-index: 30; display: none; }
   #endScreen { position: absolute; inset: 0; background: rgba(0,0,0,.85); display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 200; color: #fff; text-align: center; padding: 20px; }
   #endScreen .stats { background: rgba(255,255,255,.1); padding: 20px; border-radius: 12px; margin: 20px 0; min-width: 280px; font-size: 18px; }
   #throwBtn { position: absolute; bottom: 60px; right: 135px; width: 72px; height: 72px; border-radius: 50%; border: 3px solid #fff; background: rgba(59,130,246,.75); color: #fff; font-weight: bold; font-size: 10px; z-index: 30; display: none; }
@@ -147,9 +148,10 @@
   #item { color: var(--ouro1); bottom: 56px; letter-spacing: .5px; text-shadow: 0 1px 3px #000, 0 0 8px rgba(0,0,0,.8); }
 
   /* botões do toque */
-  #atkBtn, #throwBtn, #invBtn, #pickBtn { font-family: inherit; cursor: pointer; box-shadow: 0 5px 0 rgba(0,0,0,.45), 0 8px 14px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.3); transition: transform .08s, box-shadow .08s, filter .15s; }
-  #atkBtn:active, #throwBtn:active, #invBtn:active, #pickBtn:active { transform: translateY(3px); box-shadow: 0 2px 0 rgba(0,0,0,.45), 0 4px 8px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.3); }
+  #atkBtn, #throwBtn, #invBtn, #pickBtn, #jumpBtn { font-family: inherit; cursor: pointer; box-shadow: 0 5px 0 rgba(0,0,0,.45), 0 8px 14px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.3); transition: transform .08s, box-shadow .08s, filter .15s; }
+  #atkBtn:active, #throwBtn:active, #invBtn:active, #pickBtn:active, #jumpBtn:active { transform: translateY(3px); box-shadow: 0 2px 0 rgba(0,0,0,.45), 0 4px 8px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.3); }
   #atkBtn { background: linear-gradient(var(--ouro1), var(--ouro2)); color: #3b2410; border: 3px solid #8a5a1f; letter-spacing: 1px; text-shadow: 0 1px 0 rgba(255,255,255,.3); }
+  #jumpBtn { background: linear-gradient(#4ade80, #16a34a); color: #fff; border: 3px solid #166534; letter-spacing: .5px; text-shadow: 0 1px 2px rgba(0,0,0,.5); }
   #throwBtn { background: linear-gradient(var(--marrom1), var(--marrom2)); color: var(--creme); border: 3px solid var(--borda); text-shadow: 0 1px 2px rgba(0,0,0,.6); }
   #invBtn { background: linear-gradient(var(--marrom1), var(--marrom2)); border: 2px solid var(--borda); color: var(--creme); }
   #pickBtn { background: linear-gradient(var(--ouro1), var(--ouro2)); color: #3b2410; border: 2px solid #8a5a1f; letter-spacing: 1.5px; text-transform: uppercase; text-shadow: 0 1px 0 rgba(255,255,255,.3); }
@@ -272,6 +274,7 @@
   <div id="item">Procure um item brilhante no chão</div>
   <div id="joystick-zone"><div id="joystick-thumb"></div></div>
   <button id="atkBtn">ATACAR</button>
+  <button id="jumpBtn">PULAR</button>
   <button id="throwBtn">ARREMESSAR</button>
   <button id="pickBtn">PEGAR</button>
   <button id="invBtn">🎒</button>
@@ -315,6 +318,7 @@ let socket = null, myId = null, currentRoom = null, lobbyPlayers = [];
 let scene, camera, renderer, clock, started = false, sunLight = null;
 let colliders = [], ais = [], others = {};
 let isSolo = false, gameOver = false, health = 100, kills = 0, lastAtk = 0, lastSend = 0;
+let velY = 0, onGround = true, jumpReady = true;
 let yaw = 0, pitch = 0, bob = 0;
 const keys = {}, jv = { x: 0, y: 0 };
 let zMode = false;   // true = modo Ataque Zumbi
@@ -1673,7 +1677,7 @@ async function _startGame(solo) {
   ['menu', 'lobby', 'roomMenu', 'modeMenu'].forEach(i => $(i).style.display = 'none'); $('fsBtn').style.display = 'none';
   const gameDiv = $('game');
   gameDiv.style.display = 'block';
-  if (isTouch) { $('joystick-zone').style.display = 'block'; $('atkBtn').style.display = 'block'; $('throwBtn').style.display = 'block'; $('hint').textContent = 'Joystick move · arraste a tela para olhar'; }
+  if (isTouch) { $('joystick-zone').style.display = 'block'; $('atkBtn').style.display = 'block'; $('throwBtn').style.display = 'block'; $('jumpBtn').style.display = 'block'; $('hint').textContent = 'Joystick move · arraste a tela para olhar'; }
 
   setLoad(5, 'Carregando modelos…'); await nextPaint(); onLoadStep = f => setLoad(5 + f * 30, 'Carregando modelos…');
   try { await loadModels(); } catch(e) { console.warn('Erro carregando modelos', e); }
@@ -1771,6 +1775,7 @@ function bindInput(cv) {
     }
   });
   $('atkBtn').addEventListener('touchstart', e => { attack(); e.preventDefault(); }, { passive: false });
+  $('jumpBtn').addEventListener('touchstart', e => { doJump(); e.preventDefault(); }, { passive: false });
   $('throwBtn').addEventListener('touchstart', e => { throwItem(); e.preventDefault(); }, { passive: false });
 }
 
@@ -2635,10 +2640,14 @@ function spawnAI(){
   });
   spawnLoot();
 }
+function doJump() {
+  if (gameOver || !started || zDowned) return;
+  if (onGround && jumpReady) { velY = 7.5; onGround = false; jumpReady = false; }
+}
 function attack(){
   if(gameOver||!started||zDowned)return;
   if(zMode){zFire();return;}
-  const now=performance.now();if(now-lastAtk<450)return;lastAtk=now;
+  const now=performance.now();if(now-lastAtk<100)return;lastAtk=now;
   startFP('swing');beep(220,.07);
   if(!isSolo){if(socket)socket.emit('attack',{room:currentRoom,weapon,dmg:30+(weapon!==null?ITEMS[weapon].d:0)});return;}
   setTimeout(()=>{if(gameOver)return;
@@ -2669,7 +2678,17 @@ function update(dt,t){
   const l=Math.hypot(mx,mz);if(l>1){mx/=l;mz/=l;}
   move(camera.position,mx*6*dt,mz*6*dt);
   bob+=Math.min(l,1)*dt*10;const sg=Math.sin(bob)>0;if(l>.1&&sg!==lastStep){lastStep=sg;beep(60,.05,'triangle');}
-  camera.position.y=1.7+Math.sin(bob)*.04*Math.min(l,1);
+  // pulo + escada
+  const LADDER = { x: 20, z: -48, h: 5.2 };
+  const nearLadder = Math.hypot(camera.position.x - LADDER.x, camera.position.z - LADDER.z) < 1.6;
+  const onRoof = Math.abs(camera.position.x - LADDER.x) < 1.5 && Math.abs(camera.position.z - (LADDER.z + 1)) < 1.2 && camera.position.y > 4;
+  if (nearLadder && (keys.KeyW || jv.y < -.3) && camera.position.y < LADDER.h - .3) { velY = 3.2; onGround = false; }
+  velY -= 18 * dt;
+  camera.position.y += velY * dt;
+  const groundY = onRoof ? LADDER.h : 1.7;
+  if (camera.position.y <= groundY) { camera.position.y = groundY; velY = 0; onGround = true; jumpReady = true; }
+  else if (camera.position.y > LADDER.h && (nearLadder || onRoof)) { camera.position.y = LADDER.h; velY = 0; onGround = true; jumpReady = true; }
+  camera.position.y += Math.sin(bob)*.04*Math.min(l,1);
   camera.rotation.set(pitch+fpKick+(Math.random()-.5)*shake*.06,yaw+(Math.random()-.5)*shake*.06,fpRoll);
 
   {let nr=null,bd=2.2;loot.forEach(o=>{if(o.taken)return;const dd=Math.hypot(o.g.position.x-camera.position.x,o.g.position.z-camera.position.z);if(dd<bd){bd=dd;nr=o;}});nearLoot=nr;const pb=$('pickBtn'),tx=nr?'PEGAR '+ITEMS[nr.t].n+(isTouch?'':' [E]'):'';if(tx!==lastPick){lastPick=tx;pb.style.display=nr?'block':'none';pb.textContent=tx;}}
@@ -2893,7 +2912,7 @@ function zRemoteShot(d) {                     // tiro de outro jogador: só o vi
   beep(150, .08, 'sawtooth');
 }
 function zMelee() {                           // sem munição nenhuma: não trava o jogo
-  const now = performance.now(); if (now - lastAtk < 450) return; lastAtk = now;
+  const now = performance.now(); if (now - lastAtk < 100) return; lastAtk = now;
   startFP('swing'); beep(220, .07); toast('Sem munição! Pegue itens no chão (E) — corpo a corpo');
   setTimeout(() => {
     if (gameOver) return;
@@ -3805,7 +3824,24 @@ function buildMap(){
   MP.filter(o=>o.t==='sign').forEach(o=>{const m=label(o.n||'',o.text||'',o.w,o.h,o.x,o.y!=null?o.y:3.5,o.z,o.bg);m.rotation.y=(o.rot||0)*Math.PI/180;});
   buildWorld(MP);
 }
-function buildExtras(){}   // (tudo isso agora vem do map.json: chão, carros, árvores, luzes…)
+function buildLadder() {
+  // escada na parte de trás, perto dos contêineres, para subir no telhado
+  const x = 20, z = -48, h = 5.2, steps = 14;
+  const rail = std(0x6b4423, { roughness: .7 });
+  const step = std(0x8b6035, { roughness: .6 });
+  // montantes
+  box(.08, h, .08, rail, x - .35, h / 2, z, false, false);
+  box(.08, h, .08, rail, x + .35, h / 2, z, false, false);
+  // degraus
+  for (let i = 0; i < steps; i++) {
+    const y = .3 + i * (h - .5) / steps;
+    box(.7, .06, .12, step, x, y, z, false, false);
+  }
+  // plataforma no topo que conecta ao telhado
+  box(2.5, .12, 2, std(0x4a2e17), x, h, z + 1, false, false);
+  console.log('✓ escada para o telhado em', x, z);
+}
+function buildExtras(){ buildLadder(); }   // escada + o resto vem do map.json
 
 /* ---------- REALISMO ---------- */
 let lastStep=false;
