@@ -2678,16 +2678,21 @@ function update(dt,t){
   const l=Math.hypot(mx,mz);if(l>1){mx/=l;mz/=l;}
   move(camera.position,mx*6*dt,mz*6*dt);
   bob+=Math.min(l,1)*dt*10;const sg=Math.sin(bob)>0;if(l>.1&&sg!==lastStep){lastStep=sg;beep(60,.05,'triangle');}
-  // pulo + escada
-  const LADDER = { x: 22, z: -55, h: 5.2 };
-  const nearLadder = Math.hypot(camera.position.x - LADDER.x, camera.position.z - LADDER.z) < 1.6;
-  const onRoof = Math.abs(camera.position.x - LADDER.x) < 1.5 && Math.abs(camera.position.z - (LADDER.z + 1)) < 1.2 && camera.position.y > 4;
-  if (nearLadder && (keys.KeyW || jv.y < -.3) && camera.position.y < LADDER.h - .3) { velY = 3.2; onGround = false; }
+  // pulo + escada (lê do mapa)
+  const ladders = (MAPDATA || []).filter(o => o.t === 'ladder');
+  let nearL = null, onRoof = false;
+  for (const L of ladders) {
+    const d = Math.hypot(camera.position.x - L.x, camera.position.z - L.z);
+    if (d < 1.6) nearL = L;
+    if (Math.abs(camera.position.x - L.x) < 1.5 && Math.abs(camera.position.z - L.z) < 1.2 && camera.position.y > 4) onRoof = true;
+  }
+  if (nearL && (keys.KeyW || jv.y < -.3) && camera.position.y < (nearL.h || 5.2) - .3) { velY = 3.2; onGround = false; }
   velY -= 18 * dt;
   camera.position.y += velY * dt;
-  const groundY = onRoof ? LADDER.h : 1.7;
+  const roofH = nearL ? (nearL.h || 5.2) : (onRoof && ladders[0] ? (ladders[0].h || 5.2) : 1.7);
+  const groundY = (onRoof || (nearL && camera.position.y > 4)) ? roofH : 1.7;
   if (camera.position.y <= groundY) { camera.position.y = groundY; velY = 0; onGround = true; jumpReady = true; }
-  else if (camera.position.y > LADDER.h && (nearLadder || onRoof)) { camera.position.y = LADDER.h; velY = 0; onGround = true; jumpReady = true; }
+  else if (camera.position.y > roofH && (nearL || onRoof)) { camera.position.y = roofH; velY = 0; onGround = true; jumpReady = true; }
   camera.position.y += Math.sin(bob)*.04*Math.min(l,1);
   camera.rotation.set(pitch+fpKick+(Math.random()-.5)*shake*.06,yaw+(Math.random()-.5)*shake*.06,fpRoll);
 
@@ -3705,7 +3710,7 @@ function buildMap(){
     const buildShelf=(o,res)=>{
       const dir=shDir(o),h=+o.h>0?+o.h:GOND_TOP,n=o.kind==='stock'?0:aisleOf(o,dir,res);
       shelf(o.x,o.z-o.len/2,o.z+o.len/2,dir,o.kind==='stock'?bx:gp,h,n);
-      if(o.kind!=='stock')pontaFor(o,dir,n);
+      if(o.kind!=='stock' && !(MAPDATA||[]).some(p=>p.t==='ponta'))pontaFor(o,dir,n);
     };
     const all=MP.filter(o=>o.t==='shelf'),special=o=>Math.abs(shRes(o))>1e-6||+o.y0>0||(o.sy>0&&+o.sy!==1);
     all.filter(o=>!special(o)).forEach(o=>{const c0=colliders.length;buildShelf(o,0);if(o.solid===false)colliders.length=c0;});
@@ -3825,23 +3830,41 @@ function buildMap(){
   buildWorld(MP);
 }
 function buildLadder() {
-  // escada na parte de trás, perto dos contêineres, para subir no telhado
-  const x = 22, z = -55, h = 5.2, steps = 14;
+  // constrói as escadas que estão no map.json (tipo 'ladder')
+  const ladders = (MAPDATA || []).filter(o => o.t === 'ladder');
+  if (!ladders.length) return;
   const rail = std(0x6b4423, { roughness: .7 });
   const step = std(0x8b6035, { roughness: .6 });
-  // montantes
-  box(.08, h, .08, rail, x - .35, h / 2, z, false, false);
-  box(.08, h, .08, rail, x + .35, h / 2, z, false, false);
-  // degraus
-  for (let i = 0; i < steps; i++) {
-    const y = .3 + i * (h - .5) / steps;
-    box(.7, .06, .12, step, x, y, z, false, false);
-  }
-  // plataforma no topo que conecta ao telhado
-  box(2.5, .12, 2, std(0x4a2e17), x, h, z + 1, false, false);
-  console.log('✓ escada para o telhado em', x, z);
+  ladders.forEach(L => {
+    const x = L.x, z = L.z, h = L.h || 5.2, w = L.w || .8, steps = Math.max(8, Math.round(h * 2.5));
+    const half = w / 2;
+    box(.08, h, .08, rail, x - half, h / 2, z, false, false);
+    box(.08, h, .08, rail, x + half, h / 2, z, false, false);
+    for (let i = 0; i < steps; i++) {
+      const y = .25 + i * (h - .4) / steps;
+      box(w - .1, .06, .12, step, x, y, z, false, false);
+    }
+    box(w + .4, .12, 1.2, std(0x4a2e17), x, h, z, false, false);
+  });
+  console.log('✓', ladders.length, 'escada(s) do mapa');
 }
-function buildExtras(){ buildLadder(); }   // escada + o resto vem do map.json
+function buildPontas() {
+  // constrói paletes de ponta que estão no map.json
+  const pontas = (MAPDATA || []).filter(o => o.t === 'ponta');
+  if (!pontas.length) return;
+  const palm = tx('palete_madeira', mcol(0xa16207));
+  pontas.forEach(P => {
+    const w = P.w || 1, d = P.d || 1, n = P.n || 1;
+    const base = new THREE.Mesh(new THREE.BoxGeometry(w, .14, d), palm);
+    base.position.set(P.x, .07, P.z); base.castShadow = base.receiveShadow = true; scene.add(base);
+    const sm = (typeof pontaMat === 'function') ? pontaMat(n) : std(0xc9a26b);
+    const blk = new THREE.Mesh(new THREE.BoxGeometry(w - .1, 1.2, d - .1), sm);
+    blk.position.set(P.x, .14 + .6, P.z); blk.castShadow = true; scene.add(blk);
+    colliders.push({ x1: P.x - w / 2, x2: P.x + w / 2, z1: P.z - d / 2, z2: P.z + d / 2 });
+  });
+  console.log('✓', pontas.length, 'palete(s) de ponta do mapa');
+}
+function buildExtras(){ buildLadder(); buildPontas(); }   // escada + pontas + o resto vem do map.json
 
 /* ---------- REALISMO ---------- */
 let lastStep=false;
