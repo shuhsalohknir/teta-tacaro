@@ -1407,7 +1407,7 @@ async function playZombieIntro() {
       $('loading').style.display = 'none';
       // áudio da cutscene
       try {
-        cutsceneAudio = new Audio('cutscenezumbi.mp3');
+        cutsceneAudio = new Audio('audio/cutscenezumbi.mp3');
         cutsceneAudio.volume = 0.85;
         cutsceneAudio.play().catch(e => console.warn('áudio cutscene', e));
       } catch (e) { console.warn('áudio cutscene', e); }
