@@ -1383,12 +1383,12 @@ function playDamageSound() {
 }
 
 /* ---------- CUTSCENE DO MODO ZUMBI ----------
-   Cena própria (renderer e THREE.Scene separados): mercado → casa → bebe → cai → vira zumbi → título.
+   Cena própria: mercado → pega produto → casa → bebe → cai → vira zumbi (modelo zombie_moss) → título.
    Roda antes de montar o mapa; "Pular" (Esc / Enter / Espaço / botão) encerra na hora. Para desligar: window.SEM_INTRO = true. */
 const INTRO = { total: 35.6 };
 async function playZombieIntro() {
   if (typeof THREE === 'undefined' || window.SEM_INTRO) return;
-  const cc = charCounter, V3 = (x, y, z) => new THREE.Vector3(x, y, z), HX = 100;     // a casa fica 100 m ao lado do mercado
+  const cc = charCounter, V3 = (x, y, z) => new THREE.Vector3(x, y, z), HX = 100;
   return new Promise(async resolve => {
     let host = null, rd = null, raf = 0, actor = null, ended = false;
     const keyH = e => { if (['Escape', 'Enter', 'Space'].includes(e.code)) { e.preventDefault(); end(); } };
@@ -1410,7 +1410,7 @@ async function playZombieIntro() {
       rd.toneMapping = THREE.ACESFilmicToneMapping; rd.toneMappingExposure = 1.1; host.appendChild(rd.domElement);
       const ui = (css, txt) => { const d = document.createElement('div'); d.style.cssText = 'position:absolute;pointer-events:none;' + css; if (txt) d.textContent = txt; host.appendChild(d); return d; };
       const vig = ui('inset:0;opacity:0;background:radial-gradient(ellipse at center,rgba(40,120,40,0) 25%,rgba(30,110,30,.55) 70%,rgba(10,50,10,.95) 100%)');
-      const gflash = ui('inset:0;opacity:0;background:#6dff7a;mix-blend-mode:screen');
+      const gflash = ui('inset:0;opacity:0;background:rgba(80,220,80,.35);pointer-events:none');
       ui('left:0;right:0;top:0;height:9%;background:#000'); ui('left:0;right:0;bottom:0;height:9%;background:#000');
       const cap = ui('left:6%;bottom:13%;color:#fff;font:600 clamp(18px,3vw,30px)/1.2 system-ui,sans-serif;letter-spacing:.12em;text-shadow:0 2px 10px #000;opacity:0;transition:opacity .5s');
       const fade = ui('inset:0;background:#000;opacity:1');
@@ -1427,39 +1427,42 @@ async function playZombieIntro() {
       const bx = (w, h, d, c, x, y, z, o) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), c && c.isMaterial ? c : M(c, o)); m.position.set(x, y, z); sc.add(m); return m; };
       const cy = (r0, r1, h, c, x, y, z, o, seg) => { const m = new THREE.Mesh(new THREE.CylinderGeometry(r0, r1, h, seg || 14), M(c, o)); m.position.set(x, y, z); sc.add(m); return m; };
       sc.add(new THREE.HemisphereLight(0xdde8ff, 0x3a3028, .55));
-      /* mercado (x ≈ 0): corredor ao longo de Z, caixa no fundo */
-      // texturas existentes da cutscene (prateleiras e bancada)
+
+      // texturas (com fallback seguro)
       const texLoader = new THREE.TextureLoader();
       const loadOne = (file) => new Promise(res => texLoader.load('assets/texturas/' + file, t => {
-        t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 8; res(t);
+        t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 8; t.needsUpdate = true; res(t);
       }, undefined, () => res(null)));
       const [texGond, texHort, texPiso] = await Promise.all([
         loadOne('corredor_01.jpg'),
         loadOne('hortifruti_base.jpg'),
         loadOne('piso_mercado.jpg')
       ]);
-      const matGond = texGond ? new THREE.MeshStandardMaterial({ map: texGond, roughness: .65 }) : M(0x5b7fb4);
-      const matHort = texHort ? new THREE.MeshStandardMaterial({ map: texHort, roughness: .7 }) : M(0x6b4a32);
-      const matPiso = texPiso ? new THREE.MeshStandardMaterial({ map: texPiso, roughness: .85 }) : M(0x9aa0aa);
-      if (texGond) { texGond.repeat.set(2.2, 1.1); }
-      if (texHort) { texHort.repeat.set(1.5, 1); }
-      if (texPiso) { texPiso.repeat.set(3, 6); }
+      const matGond = texGond ? new THREE.MeshStandardMaterial({ map: texGond, roughness: .7, metalness: 0 }) : M(0x6b7280);
+      const matHort = texHort ? new THREE.MeshStandardMaterial({ map: texHort, roughness: .75 }) : M(0x6b4a32);
+      const matPiso = texPiso ? new THREE.MeshStandardMaterial({ map: texPiso, roughness: .9 }) : M(0x9aa0aa);
+      if (texGond) texGond.repeat.set(1.8, 1.0);
+      if (texHort) texHort.repeat.set(1.2, 0.8);
+      if (texPiso) texPiso.repeat.set(2.5, 4);
 
-      bx(9, .1, 22, matPiso, 0, -.05, 0); bx(9, .1, 22, 0xcfd3da, 0, 3.4, 0); bx(.2, 3.5, 22, 0xe6e2d6, -4.5, 1.7, 0); bx(.2, 3.5, 22, 0xe6e2d6, 4.5, 1.7, 0); bx(9, 3.5, .2, 0xe6e2d6, 0, 1.7, -10);
+      /* mercado */
+      bx(9, .1, 22, matPiso, 0, -.05, 0);
+      bx(9, .1, 22, 0xcfd3da, 0, 3.4, 0);
+      bx(.2, 3.5, 22, 0xe6e2d6, -4.5, 1.7, 0); bx(.2, 3.5, 22, 0xe6e2d6, 4.5, 1.7, 0); bx(9, 3.5, .2, 0xe6e2d6, 0, 1.7, -10);
       for (const sd of [-1, 1]) {
-        bx(.9, .06, 14, matHort, sd * 2.4, .03, -1);                                    // base (textura hortifrúti)
-        // face da prateleira com textura de corredor
-        const face = new THREE.Mesh(new THREE.PlaneGeometry(14, 2.1), matGond);
-        face.position.set(sd * 1.95, 1.15, -1);
+        bx(.9, .08, 14, matHort, sd * 2.4, .04, -1);
+        const face = new THREE.Mesh(new THREE.PlaneGeometry(13.6, 2.05), matGond);
+        face.position.set(sd * 1.92, 1.18, -1);
         face.rotation.y = sd > 0 ? -Math.PI / 2 : Math.PI / 2;
         sc.add(face);
-        bx(.9, 2.2, 14, 0x4a5568, sd * 2.4, 1.1, -1, { roughness: .7 });                 // corpo de fundo
+        bx(.85, 2.15, 13.8, 0x3f4650, sd * 2.42, 1.12, -1, { roughness: .8 });
       }
       for (const z of [3, -3, -8]) { bx(1.6, .08, .5, 0xffffff, 0, 3.32, z, { emissive: 0xffffff, emissiveIntensity: 1 }); const L = new THREE.PointLight(0xfff4e0, .8, 13); L.position.set(0, 3, z); sc.add(L); }
       bx(3.2, .95, .9, 0x1f2937, 0, .47, -7.4); bx(3.2, .06, .95, 0xe8a63a, 0, .98, -7.4); bx(.5, .45, .4, 0x111827, 1.1, 1.25, -7.35); bx(1.4, .04, .6, 0x0b0f14, -.4, 1.03, -7.4);
       const prodM = new THREE.Group(); { const b = new THREE.Mesh(new THREE.BoxGeometry(.11, .22, .11), M(0xf8fafc)); const t = new THREE.Mesh(new THREE.BoxGeometry(.115, .06, .115), M(0x3b82f6)); t.position.y = .1; prodM.add(b, t); } sc.add(prodM);
       const bag = new THREE.Mesh(new THREE.BoxGeometry(.28, .36, .16), M(0xb98a56)); bag.visible = false; sc.add(bag);
-      /* casa (x ≈ 100) */
+
+      /* casa */
       bx(8, .1, 7, 0x8a5a35, HX, -.05, 0, { roughness: .6 }); bx(8, .1, 7, 0xd8cfc0, HX, 3, 0); bx(8, 3.1, .2, 0xe3d7bf, HX, 1.5, -3.5); bx(.2, 3.1, 7, 0xd9ccb2, HX - 4, 1.5, 0); bx(.2, 3.1, 7, 0xd9ccb2, HX + 4, 1.5, 0);
       bx(1.5, 1.2, .08, 0x9cc7ff, HX + 2.4, 1.7, -3.38, { emissive: 0x7fa8ff, emissiveIntensity: .8 }); bx(1.62, 1.32, .06, 0x5b4636, HX + 2.4, 1.7, -3.42);
       bx(4.6, .9, .7, matHort, HX + .2, .45, -3.1); bx(4.7, .06, .75, 0x2a2a2e, HX + .2, .93, -3.1); bx(.8, 1.9, .7, 0xf1f5f9, HX - 3.3, .95, -3.1);
@@ -1472,43 +1475,71 @@ async function playZombieIntro() {
         const b = new THREE.Mesh(new THREE.CylinderGeometry(.05, .05, .2, 12), gm), n = new THREE.Mesh(new THREE.CylinderGeometry(.02, .035, .09, 10), gm), c = new THREE.Mesh(new THREE.CylinderGeometry(.024, .024, .02, 10), M(0x202020)); b.position.y = .1; n.position.y = .245; c.position.y = .3; bottle.add(b, n, c); }
       bottle.position.set(HX + 1.3, .96, -3.05); sc.add(bottle);
 
-      /* ---------- personagem ---------- */
+      /* ---------- personagem businessman ---------- */
       const nm = ['businessman', 'adventurer', 'witch'].find(n => models[n] && (!RIGGED.includes(n) || THREE.SkeletonUtils)) || 'fallback';
       actor = createActor(nm, 0x1f2937, { skin: 0xe8b894, hair: 0x2b1a10, pants: 0x2f3644, height: 1.8 });
       sc.add(actor.root); const R = actor.root, PV = actor.pivot; R.position.set(0, 0, 6);
-      const hasClip = !!(actor.act && actor.act.death), skinCols = [];
-      actor.model.traverse(o => { if (!o.isMesh) return; (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => { if (m && m.color) skinCols.push([m, m.color.clone()]); }); });
-      const zomb = new THREE.Color(0x8fcf6a);
-      const tint = k => skinCols.forEach(([m, c0]) => { m.color.copy(c0).lerp(zomb, k * .75).multiplyScalar(1 - .25 * k); });
+      const hasClip = !!(actor.act && actor.act.death);
       let manual = false; const origAnim = actor.animate.bind(actor);
       actor.animate = dt => { if (!manual) return origAnim(dt); if (actor.mixer) actor.mixer.update(dt); actor.root.updateMatrixWorld(true); };
       const hv = V3(0, 0, 0), handW = o => { R.updateMatrixWorld(true); if (actor.hand) actor.hand.getWorldPosition(o); else { o.set(.3, 1, -.1); PV.localToWorld(o); } return o; };
       const mouthW = o => { o.set(0, 1.58, -.2); PV.localToWorld(o); return o; };
       const lerp3 = (o, a, b, k) => o.set(_lerp(a.x, b.x, k), _lerp(a.y, b.y, k), _lerp(a.z, b.z, k));
       const seg = (t, a, b) => _clamp((t - a) / (b - a), 0, 1), E = (t, a, b) => _ease(seg(t, a, b));
-      const look = (p, tg) => { cam.position.copy(p); cam.lookAt(tg); };
       const camP = V3(0, 1.4, 9), camT = V3(0, 1.2, 6), tmp = V3(0, 0, 0), tmp2 = V3(0, 0, 0);
-      let capTxt = '', lastBeat = 0, lastSiz = 0, bBeep = 0, gaveBeep = {}, standing = false, fallen = false, rose = false, bottleVel = 0, bottleDrop = false;
+      let capTxt = '', lastBeat = 0, lastSiz = 0, bBeep = 0, gaveBeep = {}, standing = false, fallen = false, rose = false, bottleVel = 0, bottleDrop = false, picked = false, drank = false;
       const once = (k, fn) => { if (!gaveBeep[k]) { gaveBeep[k] = 1; fn(); } };
       const setCap = txt => { if (txt !== capTxt) { capTxt = txt; if (txt) { cap.textContent = txt; cap.style.opacity = 1; } else cap.style.opacity = 0; } };
       const beepS = (f, d, ty) => { try { beep(f, d, ty); } catch (e) { } };
       const death = hasClip ? actor.act.death : null, dDur = death ? death.getClip().duration : 1.2;
       const ST = { A: 12.6, DROP: 22.0, TINT0: 24.0, GETUP: 26.6, WALK: 28.4, TITLE0: 32.8 };
 
-      /* ---------- roteiro ---------- */
+      /* ---------- modelo zumbi (zombie_moss) ---------- */
+      let zRoot = null, zMixer = null, zActs = {}, zCur = null;
+      if (models.zombie) {
+        zRoot = new THREE.Group();
+        const model = THREE.SkeletonUtils ? THREE.SkeletonUtils.clone(models.zombie) : models.zombie.clone(true);
+        model.traverse(o => { if (o.isMesh) { o.castShadow = o.receiveShadow = true; o.frustumCulled = false; } });
+        model.updateMatrixWorld(true);
+        const bb = new THREE.Box3().setFromObject(model);
+        const h = Math.max(0.01, bb.max.y - bb.min.y);
+        model.scale.setScalar(1.7 / h);
+        model.updateMatrixWorld(true);
+        const bb2 = new THREE.Box3().setFromObject(model);
+        model.position.set(-(bb2.min.x + bb2.max.x) / 2, -bb2.min.y, -(bb2.min.z + bb2.max.z) / 2);
+        zRoot.add(model);
+        zRoot.visible = false;
+        zRoot.position.set(HX, 0, -2.35);
+        sc.add(zRoot);
+        const clips = models.zombieAnims || [];
+        if (clips.length) {
+          zMixer = new THREE.AnimationMixer(model);
+          const find = re => clips.find(c => re.test(c.name));
+          const mk = (c, once) => { if (!c) return null; const a = zMixer.clipAction(c); if (once) { a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = true; } return a; };
+          zActs.idle = mk(find(/idle|stand/i));
+          zActs.walk = mk(find(/walk|shamble|limp|andar/i) || find(/run/i));
+          zActs.death = mk(find(/death|die|fall/i), true);
+          if (zActs.idle) { zActs.idle.play(); zCur = zActs.idle; }
+        }
+      }
+
       function frame(t, dt) {
         const inA = t < ST.A; let z, yaw = 0;
-        /* personagem */
+        /* businessman */
         if (inA) {
           if (t < 5) { z = 6 - 1.5 * t; yaw = 0; }
           else if (t < 7.6) { z = -1.5; yaw = -Math.PI / 2 * E(t, 5, 5.7) + Math.PI / 2 * E(t, 6.9, 7.6); }
           else if (t < 10.3) { z = _lerp(-1.5, -5.6, (t - 7.6) / 2.7); yaw = 0; }
           else { z = -5.6; yaw = 0; }
           R.position.set(0, 0, z); R.rotation.y = yaw;
+          // anima pegando o produto
+          if (t > 5.6 && t < 6.8 && !picked) { picked = true; if (actor.attack) actor.attack(); }
+        } else if (t < ST.WALK && !zRoot) {
+          if (t < ST.GETUP + 1.6) R.position.set(HX, 0, -2.35);
         }
-        else if (t < ST.WALK) { if (t < ST.GETUP + 1.6) { R.position.set(HX, 0, -2.35); } }
         if (t >= ST.A && !standing) { standing = true; R.position.set(HX, 0, -2.35); R.rotation.y = 0; bag.visible = false; prodM.visible = false; }
-        actor.update(dt);
+        if (!zRoot || !zRoot.visible) actor.update(dt);
+
         /* produto / sacola */
         if (inA) {
           if (t < 5.7) { prodM.position.set(1.8, 1.1, -1.5); }
@@ -1517,27 +1548,25 @@ async function playZombieIntro() {
           else if (t < 11.6) { prodM.position.set(.25, 1.07, -7.4); once('scan1', () => beepS(1200, .08, 'square')); if (t > 11.1) once('scan2', () => beepS(1500, .08, 'square')); }
           else { prodM.visible = false; bag.visible = true; handW(hv); bag.position.copy(hv); bag.position.y -= .12; once('bagBeep', () => beepS(880, .1, 'sine')); }
         }
-        /* câmera */
+
+        /* câmera + ações em casa */
         let sh = 0;
         if (inA) {
-          if (t < 5) { tmp.set(R.position.x + 3, 1.45, R.position.z + 3.8); camP.lerp(tmp, Math.min(1, dt * 4)); camT.set(R.position.x, 1.15, R.position.z); camT.y = 1.15; if (t < .05) camP.copy(tmp); }
+          if (t < 5) { tmp.set(R.position.x + 3, 1.45, R.position.z + 3.8); camP.lerp(tmp, Math.min(1, dt * 4)); camT.set(R.position.x, 1.15, R.position.z); if (t < .05) camP.copy(tmp); }
           else if (t < 7.6) { camP.set(.4, 1.4, -3.4); camT.set(1.1, 1.25, -1.6); }
           else { tmp.set(2.6, 1.3, R.position.z + 2.4); camP.lerp(tmp, Math.min(1, dt * 3)); camT.set(0, 1.15, R.position.z - .2); }
-        }
-        else {
-          const tb = t - ST.A;
+        } else {
           if (t < ST.DROP) {
             const k = seg(t, ST.A, ST.DROP - 2);
             camP.set(HX + 1.9 - .5 * k, 1.5, -.6 - .3 * k); camT.set(HX - .4 + .2 * k, 1.25, -3);
             if (t > 20.2) { camP.set(HX + .5, 1.55, -.9); camT.set(HX + .1, 1.4, -2.4); }
-            // cozinhando
             if (t < ST.A + 4.5 && t - lastSiz > .9) { lastSiz = t; beepS(70 + Math.random() * 30, .06, 'sawtooth'); }
             steam.forEach((m, i) => { const p = ((t * .45 + i * .17) % 1); m.position.set(HX - 1 + Math.sin(t * 2 + i) * .06, 1.3 + p * .8, -3.1); m.scale.setScalar(.6 + p * 1.2); m.material.opacity = .32 * (1 - p); });
-            // pega a garrafa, bebe, cambaleia
+            // bebe a garrafa
             const tt = t - ST.A;
             handW(hv); mouthW(tmp2);
-            if (tt < 4.5) { /* fica na bancada */ }
-            else if (tt < 5.6) { bottle.position.lerp(V3(hv.x, hv.y - .12, hv.z - .02), E(tt, 4.5, 5.6)); }
+            if (tt < 4.5) { /* na bancada */ }
+            else if (tt < 5.6) { bottle.position.lerp(V3(hv.x, hv.y - .12, hv.z - .02), E(tt, 4.5, 5.6)); if (!drank) { drank = true; if (actor.attack) actor.attack(); } }
             else if (tt < 6.6) { bottle.position.set(hv.x, hv.y - .12, hv.z - .02); }
             else if (tt < 7.5) { const k = E(tt, 6.6, 7.5); bottle.position.set(_lerp(hv.x, tmp2.x, k), _lerp(hv.y - .12, tmp2.y - .02, k), _lerp(hv.z - .02, tmp2.z, k)); bottle.rotation.x = 1.25 * k; }
             else if (tt < 8.9) { bottle.position.set(tmp2.x, tmp2.y - .02, tmp2.z); bottle.rotation.x = 1.25; if (tt - bBeep > .45) { bBeep = tt; beepS(150, .1, 'sine'); } }
@@ -1547,44 +1576,58 @@ async function playZombieIntro() {
             if (tt > 8.4) sh = .012 * seg(tt, 8.4, 9.4 + .6);
             if (tt > 9.0 && t - lastBeat > .55) { lastBeat = t; beepS(55, .14, 'sine'); }
           } else {
-            // caiu
-            once('drop', () => { manual = true; bottleDrop = true; bottleVel = 0; beepS(140, .3, 'sawtooth'); if (death) { death.reset(); death.timeScale = 1; actor.setAct(death, .1); } gf = 1; });
-            if (!death) { PV.rotation.x = 1.5 * E(t, ST.DROP, ST.DROP + .7); PV.rotation.z = 0; } else PV.rotation.set(0, 0, 0);
+            // cai e transforma no zumbi
+            once('drop', () => {
+              manual = true; bottleDrop = true; bottleVel = 0; beepS(140, .3, 'sawtooth');
+              if (death) { death.reset(); death.timeScale = 1; actor.setAct(death, .1); }
+              gf = 1;
+            });
             if (bottleDrop) { bottleVel += 9.8 * dt; bottle.position.y -= bottleVel * dt; bottle.rotation.z += dt * 5; if (bottle.position.y < .06) { bottle.position.y = .06; bottleVel *= -.35; if (Math.abs(bottleVel) < .4) { bottleVel = 0; bottleDrop = false; once('clink', () => beepS(900, .06, 'triangle')); } } }
             const k = seg(t, ST.DROP, ST.GETUP);
             if (t < ST.GETUP) { camP.set(HX + .9 - .5 * k, .35 + .15 * k, -.6 + .2 * k); camT.set(HX, .25, -2.2); sh = .012 * (1 - seg(t, ST.DROP, ST.DROP + 3)); if (t - lastBeat > _lerp(.55, 1.4, k)) { lastBeat = t; beepS(55, .14, 'sine'); } }
-            // transforma
-            tint(seg(t, ST.TINT0, ST.TINT0 + 2));
-            if (t > ST.TINT0 && t < ST.TINT0 + 2) { PV.rotation.z = Math.sin(t * 40) * .02; }
-            if (t >= ST.GETUP) {
-              if (!rose) { rose = true; if (death) { death.reset(); death.time = dDur; death.timeScale = -dDur / 1.4; death.play(); actor.cur = death; } once('groan1', () => beepS(60, .7, 'sawtooth')); }
-              const g = seg(t, ST.GETUP + 1.6, ST.WALK);
-              if (t >= ST.GETUP + 1.6 && !fallen) { fallen = true; const w = actor.act && (actor.act.walk || actor.act.run); if (w && actor.setAct) { actor.setAct(w, .4); w.timeScale = .45; } }
-              const turn = E(t, ST.GETUP + 1.0, ST.WALK + .8); R.rotation.y = Math.PI * turn;
-              const wk = seg(t, ST.WALK, ST.TITLE0); R.position.set(HX, 0, _lerp(-2.35, -.5, wk));
-              // levanta como o zumbi: primeiro deita (pitch), depois ergue o tronco
-              const rise = E(t, ST.GETUP, ST.GETUP + 1.8);
-              if (!death) {
-                PV.rotation.x = 1.55 * (1 - rise);          // de deitado para em pé
-                PV.position.y = -0.15 * (1 - rise);
-              } else {
-                PV.rotation.set(.25 * (1 - rise) + Math.sin(t * 1.4) * .04, 0, Math.sin(t * 2.1) * .05);
-                PV.position.y = -0.08 * (1 - rise);
+            // troca para o modelo zumbi
+            if (t >= ST.TINT0 && zRoot && !zRoot.visible) {
+              zRoot.visible = true;
+              R.visible = false;
+              bottle.visible = false;
+              once('transform', () => beepS(70, .5, 'sawtooth'));
+            }
+            if (zRoot && zRoot.visible) {
+              if (zMixer) zMixer.update(dt);
+              if (t >= ST.GETUP && !rose) {
+                rose = true;
+                once('groan1', () => beepS(60, .7, 'sawtooth'));
+                if (zActs.walk) {
+                  if (zCur) zCur.fadeOut(0.3);
+                  zActs.walk.reset().fadeIn(0.3).play();
+                  zCur = zActs.walk;
+                  zActs.walk.timeScale = 0.5;
+                }
               }
-              if (t > ST.WALK) { once('groan2', () => beepS(52, .9, 'sawtooth')); }
-              // câmera: de baixo para cima, de frente para o zumbi
+              if (t >= ST.WALK) {
+                const wk = seg(t, ST.WALK, ST.TITLE0);
+                zRoot.position.set(HX, 0, _lerp(-2.35, -.5, wk));
+                zRoot.rotation.y = Math.PI * E(t, ST.GETUP + 1.0, ST.WALK + .8);
+                if (t > ST.WALK) once('groan2', () => beepS(52, .9, 'sawtooth'));
+              }
               const c2 = E(t, ST.GETUP - .4, ST.WALK + .6);
-              camP.set(HX + .3 * (1 - c2), _lerp(.4, 1.15, c2), _lerp(-.5, 2.7, c2) - 1.0 * seg(t, ST.WALK, ST.TITLE0)); camT.set(R.position.x, _lerp(.25, 1.55, c2), R.position.z);
+              camP.set(HX + .3 * (1 - c2), _lerp(.4, 1.15, c2), _lerp(-.5, 2.7, c2) - 1.0 * seg(t, ST.WALK, ST.TITLE0));
+              camT.set(zRoot.position.x, _lerp(.25, 1.55, c2), zRoot.position.z);
               if (t < ST.GETUP + 1.2) { camP.set(HX + .7, .35, -.2); camT.set(HX, .4, -2.1); }
-              actor.mats.forEach(m => m.emissive.setRGB(0, .18 * rise, 0));
+            } else if (t >= ST.GETUP) {
+              // fallback sem modelo zumbi
+              if (!rose) { rose = true; once('groan1', () => beepS(60, .7, 'sawtooth')); }
+              const rise = E(t, ST.GETUP, ST.GETUP + 1.8);
+              PV.rotation.x = 1.55 * (1 - rise);
+              const wk = seg(t, ST.WALK, ST.TITLE0); R.position.set(HX, 0, _lerp(-2.35, -.5, wk));
             }
           }
         }
-        /* tremor + posição final da câmera */
+        /* tremor + câmera */
         let ox = 0, oy = 0; if (sh) { ox = (Math.random() - .5) * sh * 2; oy = (Math.random() - .5) * sh * 2; }
         cam.position.set(camP.x + ox, camP.y + oy, camP.z); cam.lookAt(camT);
         if (t >= ST.DROP && t < ST.GETUP - .5) cam.rotation.z = .12 * seg(t, ST.DROP, ST.DROP + 1);
-        /* legendas, fades e vinheta */
+        /* legendas */
         setCap(t > .8 && t < 3.6 ? 'NO MERCADO…' : t > 13.4 && t < 16.2 ? 'EM CASA…' : '');
         let fo = 0;
         if (t < .8) fo = 1 - seg(t, 0, .8); else if (t > 11.9 && t < ST.A) fo = seg(t, 11.9, ST.A); else if (t >= ST.A && t < 13.4) fo = 1 - seg(t, ST.A, 13.4); else if (t > 32.0) fo = seg(t, 32.0, 32.8);
@@ -1605,6 +1648,7 @@ async function playZombieIntro() {
     } catch (e) { console.warn('intro falhou', e); end(); }
   });
 }
+
 
 async function startGame(solo) {
   if (started) return;
