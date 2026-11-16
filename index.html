@@ -745,7 +745,7 @@ class ActorBase {
     this.root.userData.actor = this;
     this.speed = 0; this.moving = false; this.last = new THREE.Vector3(); this.first = true;
     this.t = idx * 1.7; this.phase = 0; this.amp = 0;
-    this.attackT = -1; this.attackDur = .45; this.hitT = 0; this.flashT = 0; this.deadT = -1; this.dead = false;
+    this.attackT = -1; this.attackDur = .28; this.hitT = 0; this.flashT = 0; this.deadT = -1; this.dead = false;
     this.weapon = null; this.followK = 1;
     this.mats = [];
     this.model.traverse(o => {
@@ -1738,7 +1738,7 @@ function move(p, dx, dz, r = .4) {
 }
 
 function bindInput(cv) {
-  addEventListener('keydown', e => { keys[e.code] = true; if (e.code === 'Space') { attack(); e.preventDefault(); } });
+  addEventListener('keydown', e => { keys[e.code] = true; if (e.code === 'Space') { doJump(); e.preventDefault(); } });
   addEventListener('keyup', e => keys[e.code] = false);
   if (!isTouch) {
     cv.addEventListener('click', () => { if (!document.pointerLockElement) cv.requestPointerLock(); });
@@ -1888,7 +1888,7 @@ const FP_CFG = {
   gripCurl: .72,                     // quanto os dedos fecham em volta do item (0 aberto … 1 punho)
   twoHand: [3, 5, 6, 8, 10],         // itens segurados com as DUAS mãos (a esquerda acompanha o item)
   twoHandAt: .38,                    // onde a mão esquerda segura (fração do comprimento a partir da mão direita)
-  walkSpeed: 1.9, punchSpeed: 1.5, swingSpeed: 1.8, throwSpeed: 1.7, fireSpeed: 1.0
+  walkSpeed: 1.9, punchSpeed: 2.8, swingSpeed: 3.2, throwSpeed: 1.7, fireSpeed: 1.0
 };
 
 /* ---------- animações: poses [x, y, z, giro, sobe/desce, rolagem, dedos] por braço ---------- */
@@ -2073,7 +2073,7 @@ function fpItemAnim(dt, t) {
 function startFP(kind) {
   const armed = weapon !== null && weapon !== undefined;
   const has = n => !!(fpArms && fpArms.userData.clips && fpArms.userData.clips[n]);
-  let clip = 'Punch_R', speed = FP_CFG.punchSpeed, dur = .5, rel = 0;
+  let clip = 'Punch_R', speed = FP_CFG.punchSpeed, dur = .28, rel = 0;
   if (kind === 'swing') {
     if (armed) { clip = has('Swing') ? 'Swing' : 'Punch_R'; speed = FP_CFG.swingSpeed; }     // com item: golpe de cima para baixo
     else { fpSide ^= 1; clip = fpSide ? 'Punch_L' : 'Punch_R'; }                                // sem item: um soco de cada vez
@@ -2647,7 +2647,7 @@ function doJump() {
 function attack(){
   if(gameOver||!started||zDowned)return;
   if(zMode){zFire();return;}
-  const now=performance.now();if(now-lastAtk<100)return;lastAtk=now;
+  const now=performance.now();if(now-lastAtk<50)return;lastAtk=now;
   startFP('swing');beep(220,.07);
   if(!isSolo){if(socket)socket.emit('attack',{room:currentRoom,weapon,dmg:30+(weapon!==null?ITEMS[weapon].d:0)});return;}
   setTimeout(()=>{if(gameOver)return;
@@ -2664,7 +2664,7 @@ function attack(){
   });
   if(monster&&monster.awake&&!monster.dead){const mx=monster.root.position.x-camera.position.x,mz=monster.root.position.z-camera.position.z,md=Math.hypot(mx,mz);if(md<3.6&&(mx*fx_+mz*fz)/(md||1)>.3)monsterHurt(dmg);}
   checkSoloWin();
-  },150);
+  },40);
 }
 function hurt(n){
   health=Math.max(0,health-n);$('healthFill').style.width=health+'%';hpClass();
@@ -2679,7 +2679,7 @@ function update(dt,t){
   move(camera.position,mx*6*dt,mz*6*dt);
   bob+=Math.min(l,1)*dt*10;const sg=Math.sin(bob)>0;if(l>.1&&sg!==lastStep){lastStep=sg;beep(60,.05,'triangle');}
   // pulo + escada
-  const LADDER = { x: 20, z: -48, h: 5.2 };
+  const LADDER = { x: 22, z: -55, h: 5.2 };
   const nearLadder = Math.hypot(camera.position.x - LADDER.x, camera.position.z - LADDER.z) < 1.6;
   const onRoof = Math.abs(camera.position.x - LADDER.x) < 1.5 && Math.abs(camera.position.z - (LADDER.z + 1)) < 1.2 && camera.position.y > 4;
   if (nearLadder && (keys.KeyW || jv.y < -.3) && camera.position.y < LADDER.h - .3) { velY = 3.2; onGround = false; }
@@ -2912,7 +2912,7 @@ function zRemoteShot(d) {                     // tiro de outro jogador: só o vi
   beep(150, .08, 'sawtooth');
 }
 function zMelee() {                           // sem munição nenhuma: não trava o jogo
-  const now = performance.now(); if (now - lastAtk < 100) return; lastAtk = now;
+  const now = performance.now(); if (now - lastAtk < 50) return; lastAtk = now;
   startFP('swing'); beep(220, .07); toast('Sem munição! Pegue itens no chão (E) — corpo a corpo');
   setTimeout(() => {
     if (gameOver) return;
@@ -3826,7 +3826,7 @@ function buildMap(){
 }
 function buildLadder() {
   // escada na parte de trás, perto dos contêineres, para subir no telhado
-  const x = 20, z = -48, h = 5.2, steps = 14;
+  const x = 22, z = -55, h = 5.2, steps = 14;
   const rail = std(0x6b4423, { roughness: .7 });
   const step = std(0x8b6035, { roughness: .6 });
   // montantes
