@@ -94,7 +94,8 @@
   "z": -6.5,
   "len": 25,
   "rot": 180,
-  "kind": "grocery"
+  "kind": "grocery",
+  "aisle": 1
  },
  {
   "t": "sign",
@@ -121,7 +122,8 @@
   "z": -6.5,
   "len": 25,
   "rot": 180,
-  "kind": "grocery"
+  "kind": "grocery",
+  "aisle": 2
  },
  {
   "t": "sign",
@@ -148,7 +150,8 @@
   "z": -6.5,
   "len": 25,
   "rot": 180,
-  "kind": "grocery"
+  "kind": "grocery",
+  "aisle": 3
  },
  {
   "t": "sign",
@@ -175,7 +178,8 @@
   "z": -6.5,
   "len": 25,
   "rot": 180,
-  "kind": "grocery"
+  "kind": "grocery",
+  "aisle": 4
  },
  {
   "t": "sign",
@@ -202,7 +206,8 @@
   "z": -6.5,
   "len": 25,
   "rot": 180,
-  "kind": "grocery"
+  "kind": "grocery",
+  "aisle": 5
  },
  {
   "t": "sign",
@@ -229,7 +234,8 @@
   "z": -6.5,
   "len": 25,
   "rot": 180,
-  "kind": "grocery"
+  "kind": "grocery",
+  "aisle": 6
  },
  {
   "t": "sign",
@@ -256,7 +262,8 @@
   "z": -6.5,
   "len": 25,
   "rot": 180,
-  "kind": "grocery"
+  "kind": "grocery",
+  "aisle": 7
  },
  {
   "t": "sign",
@@ -3834,8 +3841,8 @@
   "t": "decal",
   "x": 2.5,
   "z": 15.9,
-  "w": 57,
-  "d": 0.4,
+  "w": 63.9,
+  "d": 1.1,
   "rot": 0,
   "color": "#131bfb",
   "y0": 2.85
@@ -4139,7 +4146,7 @@
   "z": -7.25,
   "w": 29.5,
   "d": 0.5,
-  "rot": 90
+  "rot": 270
  },
  {
   "t": "wall",
