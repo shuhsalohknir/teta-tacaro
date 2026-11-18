@@ -233,21 +233,22 @@
   <div class="subtitle">Ative ou desative efeitos visuais</div>
   <div style="display:flex;flex-direction:column;gap:12px;margin:20px 0;min-width:280px;">
     <label style="display:flex;align-items:center;justify-content:space-between;background:rgba(35,21,9,.78);padding:12px 16px;border-radius:8px;border:1px solid rgba(232,189,78,.35);">
-      <span>Iluminação</span>
+      <span>Iluminação dinâmica<br><small style="opacity:.7;font-weight:normal">Sol + lâmpadas</small></span>
       <input type="checkbox" id="cfgLighting" checked style="width:22px;height:22px;">
     </label>
     <label style="display:flex;align-items:center;justify-content:space-between;background:rgba(35,21,9,.78);padding:12px 16px;border-radius:8px;border:1px solid rgba(232,189,78,.35);">
-      <span>Sombras</span>
+      <span>Sombras<br><small style="opacity:.7;font-weight:normal">Sombras do sol e luzes</small></span>
       <input type="checkbox" id="cfgShadows" checked style="width:22px;height:22px;">
     </label>
     <label style="display:flex;align-items:center;justify-content:space-between;background:rgba(35,21,9,.78);padding:12px 16px;border-radius:8px;border:1px solid rgba(232,189,78,.35);">
-      <span>Atmosfera</span>
+      <span>Atmosfera<br><small style="opacity:.7;font-weight:normal">Névoa, céu e partículas</small></span>
       <input type="checkbox" id="cfgAtmosphere" checked style="width:22px;height:22px;">
     </label>
   </div>
   <div style="font-size:12px;color:#d9c597;text-align:center;max-width:340px;margin-bottom:16px;">
     Desativar melhora o desempenho em celulares e PCs fracos.
   </div>
+  <button class="menu-btn btn-online" onclick="resetQuality()">Resetar para Máximo</button>
   <button class="menu-btn btn-back" onclick="backToMain()">Voltar</button>
 </div>
 
@@ -341,14 +342,16 @@ const isTouch = navigator.maxTouchPoints > 0 || 'ontouchstart' in window;
 const QUALITY = { lighting: true, shadows: true, atmosphere: true };
 function loadQuality() {
   try {
-    const s = JSON.parse(localStorage.getItem('tetaQuality') || '{}');
+    const raw = localStorage.getItem('tetaQuality_v2');
+    if (!raw) return; // primeira vez: mantém true
+    const s = JSON.parse(raw);
     if (typeof s.lighting === 'boolean') QUALITY.lighting = s.lighting;
     if (typeof s.shadows === 'boolean') QUALITY.shadows = s.shadows;
     if (typeof s.atmosphere === 'boolean') QUALITY.atmosphere = s.atmosphere;
-  } catch (e) {}
+  } catch (e) { console.warn('qualidade', e); }
 }
 function saveQuality() {
-  localStorage.setItem('tetaQuality', JSON.stringify(QUALITY));
+  localStorage.setItem('tetaQuality_v2', JSON.stringify(QUALITY));
 }
 function applyQualityUI() {
   const l = $('cfgLighting'), s = $('cfgShadows'), a = $('cfgAtmosphere');
@@ -356,20 +359,29 @@ function applyQualityUI() {
   if (s) s.checked = QUALITY.shadows;
   if (a) a.checked = QUALITY.atmosphere;
 }
+function resetQuality() {
+  QUALITY.lighting = true;
+  QUALITY.shadows = true;
+  QUALITY.atmosphere = true;
+  saveQuality();
+  applyQualityUI();
+  toast && toast('Qualidade resetada para o máximo');
+}
 loadQuality();
-// ligar os checkboxes depois que o DOM estiver pronto
 document.addEventListener('DOMContentLoaded', () => {
   applyQualityUI();
-  ['cfgLighting', 'cfgShadows', 'cfgAtmosphere'].forEach(id => {
+  const bind = id => {
     const el = $(id);
     if (!el) return;
     el.addEventListener('change', () => {
-      QUALITY.lighting = $('cfgLighting').checked;
-      QUALITY.shadows = $('cfgShadows').checked;
-      QUALITY.atmosphere = $('cfgAtmosphere').checked;
+      QUALITY.lighting = !!$('cfgLighting').checked;
+      QUALITY.shadows = !!$('cfgShadows').checked;
+      QUALITY.atmosphere = !!$('cfgAtmosphere').checked;
       saveQuality();
+      console.log('Qualidade:', QUALITY);
     });
-  });
+  };
+  bind('cfgLighting'); bind('cfgShadows'); bind('cfgAtmosphere');
 });
 const FLAT_LOOK = true;   // visual facetado (low poly). Se algo sumir ou ficar estranho, troque para false.
 let W = 140, D = 140; const H = 5;   // W e D (tamanho do mundo) são lidos do 'meta' do map.json
@@ -1220,7 +1232,11 @@ function timerUpdate() {
 function showOnlineMenu() { $('menu').style.display = 'none'; $('roomMenu').style.display = 'flex'; getSocket(); }
 function backToMain() { $('roomMenu').style.display = 'none'; $('modeMenu').style.display = 'none'; $('configMenu').style.display = 'none'; $('menu').style.display = 'flex'; }
 function showModeMenu() { $('menu').style.display = 'none'; $('modeMenu').style.display = 'flex'; }
-function showConfigMenu() { $('menu').style.display = 'none'; $('configMenu').style.display = 'flex'; }
+function showConfigMenu() { 
+  applyQualityUI(); 
+  $('menu').style.display = 'none'; 
+  $('configMenu').style.display = 'flex'; 
+}
 function getSocket() {
   if (socket) return socket;
   if (typeof io === 'undefined') { alert('Servidor online indisponível no momento.'); return null; }
@@ -1752,11 +1768,10 @@ async function _startGame(solo) {
   try { await loadModels(); } catch(e) { console.warn('Erro carregando modelos', e); }
   onLoadStep = null;
   if (zMode) { try { await playZombieIntro(); } catch (e) { console.warn('intro', e); } showLoading(); }   // cutscene antes do modo zumbi
-  setLoad(36, 'Preparando o mercado…'); await nextPaint();
-  console.log('Modelos carregados:', Object.keys(models));
+  console.log('Iniciando com qualidade:', QUALITY);
 
   scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x05070d);
+  scene.background = new THREE.Color(QUALITY.atmosphere ? 0x1a2a40 : 0x05070d);
   if (QUALITY.atmosphere) {
     scene.fog = new THREE.Fog(0xb4c6d8, 70, 520);
   } else {
@@ -1771,26 +1786,33 @@ async function _startGame(solo) {
   renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setSize(innerWidth, innerHeight);
   renderer.setPixelRatio(Math.min(devicePixelRatio, isTouch ? 1.5 : 1.75));
-  renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.1;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = QUALITY.lighting ? 1.15 : 1.0;
   renderer.shadowMap.enabled = QUALITY.shadows;
   if (QUALITY.shadows) renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   $('game').appendChild(renderer.domElement);
   if (QUALITY.atmosphere) makeEnv();
 
+  // glowT sempre disponível (partículas e glows das lâmpadas)
+  if (!window.glowT) {
+    glowT = canvasTex(64,64,g=>{const r=g.createRadialGradient(32,32,0,32,32,32);r.addColorStop(0,'rgba(255,255,255,1)');r.addColorStop(1,'rgba(255,255,255,0)');g.fillStyle=r;g.fillRect(0,0,64,64);},1,1);
+  }
+
   if (QUALITY.lighting) {
-    scene.add(new THREE.HemisphereLight(0xffe2a6, 0x4a3f33, .45));
-    const sun = sunLight = new THREE.DirectionalLight(0xffe4b8, .26);
-    sun.position.set(20, 45, 30);
+    scene.add(new THREE.HemisphereLight(0xffe2a6, 0x4a3f33, .7));
+    const sun = sunLight = new THREE.DirectionalLight(0xfff0c8, .85);
+    sun.position.set(25, 50, 20);
     sun.castShadow = QUALITY.shadows;
     if (QUALITY.shadows) {
       sun.shadow.mapSize.set(isTouch ? 1024 : 2048, isTouch ? 1024 : 2048);
-      Object.assign(sun.shadow.camera, { left: -58, right: 58, top: 58, bottom: -58, near: 1, far: 160 });
-      sun.shadow.bias = -.0004; sun.shadow.normalBias = .03;
+      Object.assign(sun.shadow.camera, { left: -80, right: 80, top: 80, bottom: -80, near: 1, far: 200 });
+      sun.shadow.bias = -.0006; sun.shadow.normalBias = .05;
     }
     scene.add(sun);
+    // luz de preenchimento extra
+    const fill = new THREE.DirectionalLight(0xa0c0e0, .25);
+    fill.position.set(-30, 20, -10); scene.add(fill);
   } else {
-    // luz básica mínima para não ficar preto
-    scene.add(new THREE.AmbientLight(0xffffff, 0.85));
+    scene.add(new THREE.AmbientLight(0x888888, 0.55));
     sunLight = null;
   }
 
@@ -1801,7 +1823,7 @@ async function _startGame(solo) {
   buildMap(); buildExtras();
   if (QUALITY.atmosphere) polish();
   if (QUALITY.lighting) nightExtras();
-  buildCold();   // (grime() removido: eram as manchas escuras redondas no chão)
+  buildCold();
   setLoad(65, 'Carregando texturas…'); await nextPaint();
   onTexStep = f => setLoad(65 + f * 28, 'Carregando texturas…');
   await tryTextures(); onTexStep = null; setLoad(94, 'Quase pronto…');
@@ -2505,7 +2527,7 @@ function buildCold() {
     const w = +o.w || 10, d = +o.d || 10;
     ZONES.push({ x1: o.x - w / 2, x2: o.x + w / 2, z1: o.z - d / 2, z2: o.z + d / 2, axis: o.axis === 'x' ? 'x' : 'z', tA: o.tA != null ? +o.tA : 15, tB: o.tB != null ? +o.tB : 7, name: o.name || 'ZONA', snow: !!o.snow, boss: !!o.boss, h: +o.h > 0 ? +o.h : HC });
   });
-  buildColdParticles();
+  if (QUALITY.atmosphere) buildColdParticles();
   // ---- estado do frio ----
   if (scene.fog) coldBase = { c: scene.fog.color.clone(), n: scene.fog.near, f: scene.fog.far };
   else coldBase = null;
