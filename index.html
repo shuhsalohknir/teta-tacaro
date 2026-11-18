@@ -2682,6 +2682,7 @@ function hurt(n){
   if(health<=0)endGame(false);
 }
 function update(dt,t){
+  for (let i = 0; i < PNGB.length; i++) { const m = PNGB[i]; m.rotation.y = Math.atan2(camera.position.x - m.position.x, camera.position.z - m.position.z); }   // PNG 'sempre de frente'
   if(zDowned){specUpdate(dt);return;}   // caído: observa um parceiro
   const f=(keys.KeyW?1:0)-(keys.KeyS?1:0)-jv.y,r=(keys.KeyD?1:0)-(keys.KeyA?1:0)+jv.x;
   let mx=-Math.sin(yaw)*f+Math.cos(yaw)*r,mz=-Math.cos(yaw)*f-Math.sin(yaw)*r;
@@ -3877,6 +3878,23 @@ function makeInst(list, mat, shadow) {
   list.forEach((q, i) => { dd.position.set(q.x, q.y, q.z); dd.rotation.set(0, q.ry || 0, 0); dd.scale.set(q.sx, q.sy, q.sz); dd.updateMatrix(); im.setMatrixAt(i, dd.matrix); im.setColorAt(i, cc.setHex(q.col != null ? q.col : 0xffffff)); });
   im.castShadow = !!shadow; im.receiveShadow = true; im.frustumCulled = false; scene.add(im); return untint(im);
 }
+/* Imagens PNG do mapa (tipo 'png' do editor): exterior01…06.png e interior01…10.png em assets/texturas/ (fundo transparente). Sem o arquivo, nada aparece. */
+const PNGB = [];
+function pngFile(o) { const t = String(o.tex || '').trim(); if (t) return t; const cat = o.cat === 'interior' ? 'interior' : 'exterior', n = Math.min(cat === 'interior' ? 10 : 6, Math.max(1, Math.round(+o.n || 1))); return cat + String(n).padStart(2, '0') + '.png'; }
+function buildPngs() {
+  const L = (MAPDATA || []).filter(o => o.t === 'png'); if (!L.length) return;
+  const geo = new THREE.PlaneGeometry(1, 1);
+  L.forEach(o => {
+    const file = pngFile(o), key = texKey(file), w = +o.w > 0 ? +o.w : 8, hFix = +o.h > 0 ? +o.h : 0, y0 = +o.y0 || 0;
+    const m = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, alphaTest: .02, side: o.dupla === false ? THREE.FrontSide : THREE.DoubleSide });
+    if (key) tx(key, m);
+    const mesh = new THREE.Mesh(geo, m); mesh.visible = false; mesh.scale.set(w, hFix || w * .6, 1);
+    mesh.position.set(o.x, y0 + (hFix || w * .6) / 2, o.z); mesh.rotation.y = (+o.rot || 0) * Math.PI / 180; scene.add(mesh);
+    m.userData.onTex = t => { const iw = t.image && t.image.width, ih = t.image && t.image.height, hh = hFix || (iw ? w * ih / iw : w * .6); mesh.scale.set(w, hh, 1); mesh.position.y = y0 + hh / 2; mesh.visible = true; };
+    if (o.bill) PNGB.push(mesh);
+  });
+  console.log('✓', L.length, 'imagem(ns) PNG do mapa');
+}
 /* Porta-paletes de armazém (tipo 'prack' do editor): colunas + longarinas + paletes com carga. Texturas: nomes de .jpg em assets/texturas/ */
 function buildRacks() {
   const RK = (MAPDATA || []).filter(o => o.t === 'prack'); if (!RK.length) return;
@@ -3997,7 +4015,7 @@ function buildPontas() {
   });
   console.log('✓', pontas.length, 'palete(s) de ponta do mapa');
 }
-function buildExtras(){ buildLadder(); buildPontas(); buildRacks(); buildDecks(); }   // escada + pontas + o resto vem do map.json
+function buildExtras(){ buildLadder(); buildPontas(); buildRacks(); buildDecks(); buildPngs(); }   // escada + pontas + o resto vem do map.json
 
 /* ---------- REALISMO ---------- */
 let lastStep=false;
@@ -4170,18 +4188,26 @@ function scaleBoxUV(g, w, h, d, tile) {   // repete a textura a cada 'tile' metr
   for (let f = 0; f < 6; f++) for (let v = 0; v < 4; v++) { const i = f * 4 + v; uv.setXY(i, uv.getX(i) * dims[f][0] / tile, uv.getY(i) * dims[f][1] / tile); }
   uv.needsUpdate = true;
 }
+function texAlts(f) {   // nomes alternativos para o mesmo arquivo (extensão, sem '_' antes do número, inicial maiúscula)
+  const m = /^(.*?)(\.\w+)?$/.exec(f), base = m[1], out = [];
+  [base, base.replace(/_(\d+)$/, '$1'), base.charAt(0).toUpperCase() + base.slice(1)].forEach(b => ['.jpg', '.jpeg', '.png', '.webp'].forEach(x => { const n = b + x; if (n !== f && !out.includes(n)) out.push(n); }));
+  return out;
+}
 function tryTextures() {
   if (!USAR_TEXTURAS) return;
   const L = new THREE.TextureLoader();
-  const ld = (f, E, cb) => { LD.n++; L.load(TEX_PASTA + f, t => { try {
-    t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 8;
-    if (E.area && E.tile) t.repeat.set(E.area[0] / E.tile, E.area[1] / E.tile);
-    cb(t);
-  } finally { LD.d++; } }, undefined, () => { LD.d++; }); };
+  const ld = (f, E, cb, alts) => {
+    if (!alts) alts = /^(corredor|ponta)_\d+\./i.test(f) ? texAlts(f) : [];   // corredor_10.png / .jpeg / corredor10.jpg … também são aceitos
+    LD.n++; L.load(TEX_PASTA + f, t => { try {
+      t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 8;
+      if (E.area && E.tile) t.repeat.set(E.area[0] / E.tile, E.area[1] / E.tile);
+      cb(t);
+    } finally { LD.d++; } }, undefined, () => { if (alts.length) ld(alts.shift(), E, cb, alts); else if (/^(corredor|ponta)_/i.test(f)) console.warn('textura não encontrada em assets/texturas/ :', E.file); LD.d++; });
+  };
   TEXMATS.forEach(m => {
     const E = Object.assign({}, TEXTURAS[m.userData.texKey], m.userData.area ? { area: m.userData.area } : {}), ext = /(\.\w+)$/;
     ld(E.file, E, t => {
-      m.map = t; m.bumpMap = null; m.color.set(0xffffff); m.needsUpdate = true; console.log('✓ textura', E.file);
+      m.map = t; m.bumpMap = null; m.color.set(0xffffff); m.needsUpdate = true; console.log('✓ textura', E.file); if (m.userData.onTex) m.userData.onTex(t);
       if (m.userData.glow) { m.emissiveMap = t; m.emissive.set(0xffffff); m.emissiveIntensity = m.userData.glow; }   // gôndolas: a foto também brilha um pouco
       (m.userData.insts || []).forEach(im => { const w = new THREE.Color(1, 1, 1); for (let i = 0; i < im.count; i++) im.setColorAt(i, w); im.instanceColor.needsUpdate = true; });
       if (E.tile && !E.area) m.userData.boxes.forEach(([mesh, w, h, d]) => scaleBoxUV(mesh.geometry, w, h, d, E.tile));
