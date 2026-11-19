@@ -4,6 +4,13 @@
 <meta charset="UTF-8">
 <title>Teta Tacaro</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#e8bd4e">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Teta Tacaro">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bungee&display=swap" rel="stylesheet">
@@ -4611,6 +4618,16 @@ function animate() {
   timerUpdate();
   try { coldUpdate(dt, clock.elapsedTime); } catch (e) { if (!coldUpdate.err) { coldUpdate.err = 1; console.warn('coldUpdate', e); } }
   renderer.render(scene, camera);
+}
+</script>
+<script>
+// Registro do Service Worker para instalar como app
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').then(reg => {
+      console.log('PWA registrado', reg.scope);
+    }).catch(err => console.warn('SW falhou', err));
+  });
 }
 </script>
 </body>
