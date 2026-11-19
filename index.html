@@ -65,9 +65,12 @@
   #fsBtn { position: fixed; top: 14px; right: 14px; z-index: 300; padding: 10px 16px; font-size: 13px; font-weight: bold; letter-spacing: 1.5px; text-transform: uppercase;
     color: #f6e7c1; background: linear-gradient(#8b6035, #6b4423); border: 1px solid rgba(232,189,78,.55); border-bottom: 3px solid rgba(0,0,0,.4); border-radius: 6px; cursor: pointer;
     box-shadow: 0 4px 12px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.25); text-shadow: 0 1px 2px rgba(0,0,0,.5); }
-  #musicBtn { position: fixed; top: 14px; right: 68px; z-index: 300; width: 42px; height: 42px; border-radius: 50%; display: none; align-items: center; justify-content: center; font-size: 20px; line-height: 1; cursor: pointer;
+  #gearBtn { position: fixed; top: 14px; right: 68px; z-index: 300; width: 42px; height: 42px; border-radius: 50%; display: none; align-items: center; justify-content: center; font-size: 20px; line-height: 1; cursor: pointer;
     background: linear-gradient(var(--ouro1, #f3cd62), var(--ouro2, #c9962b)); border: 2px solid #8a5a1f; color: #3b2410; box-shadow: 0 3px 8px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.4); padding: 0; }
-  #musicBtn:active { transform: translateY(2px); }
+  #gearBtn:active { transform: translateY(2px); } #gearBtn.open { filter: brightness(1.12); }
+  #cfgPanel { position: fixed; top: 64px; right: 14px; z-index: 301; display: none; flex-direction: column; gap: 6px; padding: 8px; min-width: 200px; background: rgba(45,28,13,.94); border: 1px solid rgba(232,189,78,.55); border-radius: 10px; box-shadow: 0 6px 18px rgba(0,0,0,.55); }
+  #cfgPanel button { display: flex; align-items: center; gap: 8px; width: 100%; padding: 10px 12px; font-size: 14px; font-weight: 700; color: #f6e7c1; background: linear-gradient(#8b6035, #6b4423); border: 1px solid rgba(232,189,78,.55); border-bottom: 3px solid rgba(0,0,0,.4); border-radius: 6px; cursor: pointer; text-align: left; text-shadow: 0 1px 2px rgba(0,0,0,.5); }
+  #cfgPanel button:hover { filter: brightness(1.12); } #cfgPanel button:active { transform: translateY(2px); border-bottom-width: 1px; }
   #fsBtn:hover { filter: brightness(1.12); } #fsBtn:active { transform: translateY(2px); border-bottom-width: 1px; }
   input { padding: 12px; font-size: 16px; border-radius: 6px; border: 2px solid #8b6035; background: #f6ecd2; color: #3b2410; margin: 8px; width: 260px; }
   #playerList { background: rgba(35,21,9,.78); border: 1px solid rgba(232,189,78,.35); padding: 20px; border-radius: 8px; min-width: 280px; margin: 15px 0; }
@@ -223,7 +226,11 @@
 </head>
 <body>
 <button id="fsBtn" type="button" style="display:none">⛶ Tela cheia</button>
-<button id="musicBtn" type="button" title="Ligar/desligar a música">🔊</button>
+<button id="gearBtn" type="button" title="Configurações">⚙️</button>
+<div id="cfgPanel">
+  <button id="musicBtn" type="button" title="Ligar/desligar a música" style="display:none">🔊 Música</button>
+  <button id="fsGame" type="button">⛶ Tela cheia</button>
+</div>
 <button id="micBtn" type="button" title="Ligar/desligar seu microfone (voz do time)">🎤</button>
 <div id="matchTimer"></div>
 <div id="menu">
@@ -1029,19 +1036,29 @@ function updateActors(dt) {
 
 /* ---------- TELA CHEIA ---------- */
 (function () {
-  const btn = document.getElementById('fsBtn'), de = document.documentElement;
+  const btn = document.getElementById('fsBtn'), btn2 = document.getElementById('fsGame'), de = document.documentElement;   // fsBtn = menu · fsGame = engrenagem durante o jogo
   const req = de.requestFullscreen || de.webkitRequestFullscreen || de.msRequestFullscreen;
   const exit = document.exitFullscreen || document.webkitExitFullscreen || document.msExitFullscreen;
   const cur = () => document.fullscreenElement || document.webkitFullscreenElement || null;
-  if (!btn || !req || !exit) return;                       // iPhone/Safari antigo não suporta: botão fica oculto
-  btn.style.display = 'block';
-  const label = () => { btn.textContent = cur() ? '✕ Sair da tela cheia' : '⛶ Tela cheia'; };
-  btn.addEventListener('click', () => {
-    try { const p = cur() ? exit.call(document) : req.call(de); if (p && p.catch) p.catch(() => {}); } catch (e) {}
-  });
+  if (!req || !exit) { if (btn2) btn2.style.display = 'none'; return; }   // iPhone/Safari antigo não suporta: botões ficam ocultos
+  if (btn) btn.style.display = 'block';
+  const label = () => { const t = cur() ? '✕ Sair da tela cheia' : '⛶ Tela cheia'; if (btn) btn.textContent = t; if (btn2) btn2.textContent = t; };
+  const toggle = () => { try { const p = cur() ? exit.call(document) : req.call(de); if (p && p.catch) p.catch(() => {}); } catch (e) {} };
+  if (btn) btn.addEventListener('click', toggle);
+  if (btn2) { btn2.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); toggle(); }); btn2.addEventListener('touchstart', e => e.stopPropagation(), { passive: true }); }
   document.addEventListener('fullscreenchange', label);
   document.addEventListener('webkitfullscreenchange', label);
-  document.addEventListener('keydown', e => { if (e.key === 'F11') { e.preventDefault(); btn.click(); } });
+  document.addEventListener('keydown', e => { if (e.key === 'F11') { e.preventDefault(); toggle(); } });
+})();
+/* ---------- ENGRENAGEM (jogo): painel com música e tela cheia ---------- */
+(function () {
+  const g = document.getElementById('gearBtn'), p = document.getElementById('cfgPanel'); if (!g || !p) return;
+  const open = v => { p.style.display = v ? 'flex' : 'none'; g.classList.toggle('open', !!v); };
+  g.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); open(p.style.display !== 'flex'); });
+  g.addEventListener('touchstart', e => e.stopPropagation(), { passive: true });
+  p.addEventListener('touchstart', e => e.stopPropagation(), { passive: true });
+  document.addEventListener('pointerdown', e => { if (p.style.display === 'flex' && !p.contains(e.target) && e.target !== g) open(false); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') open(false); });
 })();
 
 /* ---------- MODO TELESPECTADOR (enquanto está caído) ---------- */
@@ -1386,7 +1403,7 @@ const musica = new Audio(MUSICA_ARQUIVO);
 musica.loop = true; musica.preload = 'auto'; musica.volume = MUSICA_VOL;
 let musicaOn = true, musicaRodando = false;
 try { musicaOn = localStorage.getItem('tt_musica') !== '0'; } catch (e) {}
-function musicaIcone() { const b = $('musicBtn'); if (b) b.textContent = musicaOn ? '🔊' : '🔇'; }
+function musicaIcone() { const b = $('musicBtn'); if (b) b.textContent = musicaOn ? '🔊 Música: ligada' : '🔇 Música: desligada'; }
 function tocarMusica() {
   musicaRodando = true; musicaIcone();
   const b = $('musicBtn'); if (b) b.style.display = 'flex';
@@ -1717,7 +1734,7 @@ async function _startGame(solo) {
   if (started) return;
   if (typeof THREE === 'undefined') { alert('Não foi possível carregar o motor 3D (three.js). Verifique a internet.'); return; }
   started = true; isSolo = solo;
-  ['menu', 'lobby', 'roomMenu', 'modeMenu'].forEach(i => $(i).style.display = 'none'); $('fsBtn').style.display = 'none';
+  ['menu', 'lobby', 'roomMenu', 'modeMenu'].forEach(i => $(i).style.display = 'none'); $('fsBtn').style.display = 'none'; $('gearBtn').style.display = 'flex';
   const gameDiv = $('game');
   gameDiv.style.display = 'block';
   if (isTouch) { $('joystick-zone').style.display = 'block'; $('atkBtn').style.display = 'block'; $('throwBtn').style.display = 'block'; $('jumpBtn').style.display = 'block'; $('hint').textContent = 'Joystick move · arraste a tela para olhar'; }
