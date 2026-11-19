@@ -1869,7 +1869,11 @@ function bindInput(cv) {
     }
   });
   $('atkBtn').addEventListener('touchstart', e => { attack(); e.preventDefault(); }, { passive: false });
-  $('jumpBtn').addEventListener('touchstart', e => { doJump(); e.preventDefault(); }, { passive: false });
+  $('jumpBtn').addEventListener('touchstart', e => { 
+    if (isDriving) exitCar(); 
+    else doJump(); 
+    e.preventDefault(); 
+  }, { passive: false });
   $('throwBtn').addEventListener('touchstart', e => { throwItem(); e.preventDefault(); }, { passive: false });
 }
 
@@ -2791,9 +2795,10 @@ function enterCar(car) {
   currentCar = car;
   keys.KeyE = false;
   $('pickBtn').style.display = 'none';
-  $('hint').textContent = isTouch ? 'Joystick acelera · toque para sair' : 'WASD dirigir · E sair';
+  $('hint').textContent = isTouch ? 'Joystick acelera · PULAR para sair' : 'WASD dirigir · E sair';
   toast('Entrou no carro!');
   car.driver = myId || 'me';
+  if (fpArms) fpArms.visible = false;   // esconde os braços de 1ª pessoa
   if (!isSolo && socket && currentRoom) {
     socket.emit('carEnter', { room: currentRoom, carId: car.id });
   }
@@ -2811,6 +2816,7 @@ function exitCar() {
   isDriving = false;
   currentCar.driver = null;
   currentCar = null;
+  if (fpArms) fpArms.visible = true;    // mostra os braços de novo
   $('hint').textContent = isTouch ? 'Joystick move · PEGAR coleta item' : 'WASD mover · E pegar · I inventário';
   toast('Saiu do carro');
   if (!isSolo && socket && currentRoom) {
@@ -2895,7 +2901,7 @@ function driveUpdate(dt) {
   }
 
   // sair
-  if (keys.KeyE || (isTouch && keys.Space)) exitCar();
+  if (keys.KeyE || keys.Space) exitCar();
 }
 
 function update(dt,t){
