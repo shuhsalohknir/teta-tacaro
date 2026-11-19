@@ -340,6 +340,9 @@ const FLAT_LOOK = true;   // visual facetado (low poly). Se algo sumir ou ficar 
 let W = 140, D = 140; const H = 5;   // W e D (tamanho do mundo) são lidos do 'meta' do map.json
 let socket = null, myId = null, currentRoom = null, lobbyPlayers = [];
 let scene, camera, renderer, clock, started = false, sunLight = null;
+let cars = [];
+let isDriving = false;
+let currentCar = null;
 let colliders = [], ais = [], others = {};
 let isSolo = false, gameOver = false, health = 100, kills = 0, lastAtk = 0, lastSend = 0;
 let velY = 0, onGround = true, jumpReady = true, playerUp = false;
@@ -1806,7 +1809,7 @@ function bindInput(cv) {
     cv.addEventListener('mousedown', e => { if (!document.pointerLockElement) return; if (e.button === 2) throwItem(); else attack(); });
     cv.addEventListener('contextmenu', e => e.preventDefault());
     addEventListener('mousemove', e => {
-      if (document.pointerLockElement !== cv) return;
+      if (document.pointerLockElement !== cv || isDriving) return;
       yaw -= e.movementX * .0022; pitch = Math.max(-1.3, Math.min(1.3, pitch - e.movementY * .0022));
     });
     return;
@@ -2734,8 +2737,135 @@ function hurt(n){
   $('hurt').style.opacity=1;setTimeout(()=>$('hurt').style.opacity=0,200);shake=1;playDamageSound();
   if(health<=0)endGame(false);
 }
+
+/* ==================== SISTEMA DE CARROS DIRIGÍVEIS ==================== */
+function checkEnterCar() {
+  if (isDriving || gameOver) return;
+  let near = null, best = 3.2;
+  cars.forEach(car => {
+    const d = Math.hypot(car.group.position.x - camera.position.x, car.group.position.z - camera.position.z);
+    if (d < best) { best = d; near = car; }
+  });
+  const pb = $('pickBtn');
+  if (near) {
+    pb.style.display = 'block';
+    pb.textContent = isTouch ? 'ENTRAR NO CARRO' : 'ENTRAR [E]';
+    if (keys.KeyE) enterCar(near);
+  } else if (lastPick && lastPick.indexOf('ENTRAR') === 0) {
+    // limpa se não estava perto de loot
+  }
+}
+
+function enterCar(car) {
+  isDriving = true;
+  currentCar = car;
+  keys.KeyE = false;
+  $('pickBtn').style.display = 'none';
+  $('hint').textContent = isTouch ? 'Joystick acelera · toque para sair' : 'WASD dirigir · E sair';
+  toast('Entrou no carro!');
+  // esconde o personagem (no FP o player é a câmera, então só mudamos a câmera)
+}
+
+function exitCar() {
+  if (!currentCar) return;
+  const g = currentCar.group;
+  const exitDist = 2.8;
+  const angle = g.rotation.y + Math.PI / 2;
+  camera.position.x = g.position.x + Math.sin(angle) * exitDist;
+  camera.position.z = g.position.z + Math.cos(angle) * exitDist;
+  camera.position.y = 1.7;
+  isDriving = false;
+  currentCar = null;
+  $('hint').textContent = isTouch ? 'Joystick move · PEGAR coleta item' : 'WASD mover · E pegar · I inventário';
+  toast('Saiu do carro');
+}
+
+function driveUpdate(dt) {
+  const car = currentCar;
+  if (!car) return;
+  const g = car.group;
+
+  // controles
+  const accel = (keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0) - jv.y;
+  const turn = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0) + jv.x;
+
+  // física simples
+  car.vel += accel * car.accel * dt;
+  car.vel *= 0.96; // atrito
+  car.vel = Math.max(-car.maxSpeed * 0.4, Math.min(car.maxSpeed, car.vel));
+
+  if (Math.abs(car.vel) > 0.5) {
+    g.rotation.y -= turn * car.turn * dt * Math.sign(car.vel || 1);
+  }
+
+  const dx = Math.sin(g.rotation.y) * car.vel * dt;
+  const dz = Math.cos(g.rotation.y) * car.vel * dt;
+
+  // movimento com colisão básica
+  const nx = g.position.x + dx;
+  const nz = g.position.z + dz;
+  if (!hit(nx, g.position.z, 1.3, false)) g.position.x = nx;
+  if (!hit(g.position.x, nz, 1.3, false)) g.position.z = nz;
+
+  // câmera atrás do carro
+  const camDist = 6.5;
+  const camHeight = 2.4;
+  camera.position.x = g.position.x - Math.sin(g.rotation.y) * camDist;
+  camera.position.z = g.position.z - Math.cos(g.rotation.y) * camDist;
+  camera.position.y = g.position.y + camHeight;
+  camera.lookAt(g.position.x, g.position.y + 1.2, g.position.z);
+
+  // knockback + dano em zumbis, IAs e outros jogadores
+  const speed = Math.abs(car.vel);
+  if (speed > 4) {
+    // IAs
+    ais.forEach(a => {
+      if (a.userData.hp <= 0) return;
+      const d = Math.hypot(a.position.x - g.position.x, a.position.z - g.position.z);
+      if (d < 2.6) {
+        const force = 4 + speed * 0.3;
+        const ang = Math.atan2(a.position.x - g.position.x, a.position.z - g.position.z);
+        a.position.x += Math.sin(ang) * force * dt * 8;
+        a.position.z += Math.cos(ang) * force * dt * 8;
+        if (speed > 7) {
+          a.userData.hp = Math.max(0, a.userData.hp - 18 * dt);
+          actorOf(a).hit();
+          if (a.userData.hp <= 0) { actorOf(a).die(); kills++; }
+        }
+      }
+    });
+    // outros jogadores
+    for (const id in others) {
+      const o = others[id];
+      if (!o.visible || actorOf(o).dead) continue;
+      const d = Math.hypot(o.position.x - g.position.x, o.position.z - g.position.z);
+      if (d < 2.6) {
+        const force = 3.5;
+        const ang = Math.atan2(o.position.x - g.position.x, o.position.z - g.position.z);
+        o.position.x += Math.sin(ang) * force * dt * 6;
+        o.position.z += Math.cos(ang) * force * dt * 6;
+        if (speed > 8 && Math.random() < 0.3) actorOf(o).hit();
+      }
+    }
+  }
+
+  // sair
+  if (keys.KeyE || (isTouch && keys.Space)) exitCar();
+}
+
 function update(dt,t){
   for (let i = 0; i < PNGB.length; i++) { const m = PNGB[i]; m.rotation.y = Math.atan2(camera.position.x - m.position.x, camera.position.z - m.position.z); }   // PNG 'sempre de frente'
+
+  // ==================== MODO DIRIGIR ====================
+  if (isDriving && currentCar) {
+    driveUpdate(dt);
+  } else {
+    checkEnterCar();
+  }
+
+  if (isDriving) {
+    // quando dirige, pula o movimento a pé e o look, mas continua o resto (IA, loot, etc.)
+  } else {
   if(zDowned){specUpdate(dt);return;}   // caído: observa um parceiro
   const f=(keys.KeyW?1:0)-(keys.KeyS?1:0)-jv.y,r=(keys.KeyD?1:0)-(keys.KeyA?1:0)+jv.x;
   let mx=-Math.sin(yaw)*f+Math.cos(yaw)*r,mz=-Math.cos(yaw)*f-Math.sin(yaw)*r;
@@ -2762,8 +2892,15 @@ function update(dt,t){
   }
   camera.position.y += Math.sin(bob)*.04*Math.min(l,1);
   camera.rotation.set(pitch+fpKick+(Math.random()-.5)*shake*.06,yaw+(Math.random()-.5)*shake*.06,fpRoll);
+  } // fim do else (não dirige)
 
-  {let nr=null,bd=2.2;loot.forEach(o=>{if(o.taken)return;const dd=Math.hypot(o.g.position.x-camera.position.x,o.g.position.z-camera.position.z);if(dd<bd){bd=dd;nr=o;}});nearLoot=nr;const pb=$('pickBtn'),tx=nr?'PEGAR '+ITEMS[nr.t].n+(isTouch?'':' [E]'):'';if(tx!==lastPick){lastPick=tx;pb.style.display=nr?'block':'none';pb.textContent=tx;}}
+  {let nr=null,bd=2.2;loot.forEach(o=>{if(o.taken)return;const dd=Math.hypot(o.g.position.x-camera.position.x,o.g.position.z-camera.position.z);if(dd<bd){bd=dd;nr=o;}});nearLoot=nr;
+  // não sobrescreve o botão se estiver perto de um carro
+  const nearCar = cars.some(c => Math.hypot(c.group.position.x - camera.position.x, c.group.position.z - camera.position.z) < 3.2);
+  if (!nearCar) {
+    const pb=$('pickBtn'),tx=nr?'PEGAR '+ITEMS[nr.t].n+(isTouch?'':' [E]'):'';if(tx!==lastPick){lastPick=tx;pb.style.display=nr?'block':'none';pb.textContent=tx;}
+  }
+  }
 
   ais.forEach(a=>{
     const u=a.userData;if(u.hp<=0)return;
@@ -3621,15 +3758,37 @@ function buildWorld(MP) {
     g.position.set(o.x, 0, o.z); g.rotation.y = (o.rot || 0) * Math.PI / 180; scene.add(g);
     isRotO(o) ? colBox(o.x, o.z, .5, .35) : colBox(o.x, o.z, .35, .5);
   }));
-  // carros
+  // carros (agora dirigíveis)
   MP.filter(o => o.t === 'car').forEach(o0 => placed(o0, 90, o => {
-    const ry = (o.rot || 0) * Math.PI / 180, c = hexc(o.color || '#dc2626'), side = isRotO(o);
-    side ? colBox(o.x, o.z, 2.3, 1.1) : colBox(o.x, o.z, 1.1, 2.3);
-    if (placeCar(o.x, o.z, c, ry)) return;
-    const g = new THREE.Group(), b = new THREE.Mesh(new THREE.BoxGeometry(2, .6, 4.4), std(c, { metalness: .5, roughness: .3 })), cb = new THREE.Mesh(new THREE.BoxGeometry(1.7, .55, 2.2), std(0x1e293b, { metalness: .6, roughness: .1 }));
-    b.position.y = .6; cb.position.set(0, 1.15, -.2); [b, cb].forEach(m => { m.castShadow = true; g.add(m); });
-    [[-1, 1.4], [1, 1.4], [-1, -1.4], [1, -1.4]].forEach(([a, z2]) => { const w = new THREE.Mesh(new THREE.CylinderGeometry(.35, .35, .25, 14), std(0x111111)); w.rotation.z = Math.PI / 2; w.position.set(a, .35, z2); g.add(w); });
-    g.position.set(o.x, 0, o.z); g.rotation.y = ry; scene.add(g); useModel(g, 'car.glb', 4.4, o.x, o.z);
+    const ry = (o.rot || 0) * Math.PI / 180, c = hexc(o.color || '#dc2626');
+    // não adiciona colisão estática — o carro é dinâmico
+    let g = null;
+    if (placeCar(o.x, o.z, c, ry)) {
+      // placeCar adiciona o grupo à scene; pegamos o último filho
+      g = scene.children[scene.children.length - 1];
+    } else {
+      g = new THREE.Group();
+      const b = new THREE.Mesh(new THREE.BoxGeometry(2, .6, 4.4), std(c, { metalness: .5, roughness: .3 }));
+      const cb = new THREE.Mesh(new THREE.BoxGeometry(1.7, .55, 2.2), std(0x1e293b, { metalness: .6, roughness: .1 }));
+      b.position.y = .6; cb.position.set(0, 1.15, -.2);
+      [b, cb].forEach(m => { m.castShadow = true; g.add(m); });
+      [[-1, 1.4], [1, 1.4], [-1, -1.4], [1, -1.4]].forEach(([a, z2]) => {
+        const w = new THREE.Mesh(new THREE.CylinderGeometry(.35, .35, .25, 14), std(0x111111));
+        w.rotation.z = Math.PI / 2; w.position.set(a, .35, z2); g.add(w);
+      });
+      g.position.set(o.x, 0, o.z); g.rotation.y = ry; scene.add(g);
+      useModel(g, 'car.glb', 4.4, o.x, o.z);
+    }
+    if (g) {
+      cars.push({
+        group: g,
+        vel: 0,
+        maxSpeed: 14,
+        accel: 18,
+        turn: 1.8,
+        hp: 200
+      });
+    }
   }));
   // árvores (sc = tamanho)
   MP.filter(o => o.t === 'tree').forEach(o0 => placed(o0, 0, o => {
@@ -4084,6 +4243,15 @@ function makeEnv(){
 let inv=[],sel=[],nearLoot=null,invOpen=false,lastPick='';
 function toast(t){const e=$('toast');e.textContent=t;e.style.opacity=1;clearTimeout(toast.h);toast.h=setTimeout(()=>e.style.opacity=0,2200);}
 function pickup(){
+  if (isDriving) return;
+  // prioridade: entrar no carro se estiver perto
+  let nearCar = null, best = 3.2;
+  cars.forEach(car => {
+    const d = Math.hypot(car.group.position.x - camera.position.x, car.group.position.z - camera.position.z);
+    if (d < best) { best = d; nearCar = car; }
+  });
+  if (nearCar) { enterCar(nearCar); return; }
+
   if(!nearLoot||nearLoot.taken||gameOver)return;
   if(zMode){zPickup(nearLoot);return;}
   if(inv.length>=6){toast('Inventário cheio (6)');return;}
