@@ -4621,11 +4621,74 @@ function animate() {
 }
 </script>
 <script>
-// Registro do Service Worker para instalar como app
+// ---- Controle do botão Voltar do Android ----
+let historyStack = [];
+function pushHistory(state) {
+  historyStack.push(state);
+  history.pushState({ page: state }, '', '#' + state);
+}
+
+function handleBack() {
+  if (started) {
+    // Durante a partida: abre/fecha o painel de configurações
+    const panel = document.getElementById('cfgPanel');
+    if (panel) {
+      panel.style.display = panel.style.display === 'flex' ? 'none' : 'flex';
+    }
+    return;
+  }
+
+  // Nos menus: volta para a tela anterior
+  const visible = ['cfgMenu', 'modeMenu', 'roomMenu', 'lobby'].find(id => {
+    const el = document.getElementById(id);
+    return el && el.style.display !== 'none' && getComputedStyle(el).display !== 'none';
+  });
+
+  if (visible) {
+    backToMain();
+  } else {
+    // Já está no menu principal: não fecha o app
+    history.pushState({ page: 'menu' }, '', '#menu');
+  }
+}
+
+// Inicializa o histórico
+window.addEventListener('load', () => {
+  history.replaceState({ page: 'menu' }, '', '#menu');
+  history.pushState({ page: 'menu' }, '', '#menu');
+});
+
+window.addEventListener('popstate', (e) => {
+  handleBack();
+  // Re-empurra o estado para não sair do app
+  history.pushState({ page: 'menu' }, '', '#menu');
+});
+
+// Também captura o botão físico em alguns aparelhos
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Backspace' && document.activeElement.tagName !== 'INPUT') {
+    e.preventDefault();
+    handleBack();
+  }
+});
+
+// Registro do Service Worker para instalar como app + atualização automática
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js').then(reg => {
       console.log('PWA registrado', reg.scope);
+
+      // Verifica se tem atualização nova
+      reg.addEventListener('updatefound', () => {
+        const newWorker = reg.installing;
+        newWorker.addEventListener('statechange', () => {
+          if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+            // Tem uma versão nova pronta. Recarrega a página.
+            console.log('Nova versão disponível, recarregando...');
+            window.location.reload();
+          }
+        });
+      });
     }).catch(err => console.warn('SW falhou', err));
   });
 }
