@@ -1,4 +1,4 @@
-const CACHE_NAME = 'teta-tacaro-v5';
+const CACHE_NAME = 'teta-tacaro-v3';
 const ASSETS = [
   '/',
   '/index.html',
