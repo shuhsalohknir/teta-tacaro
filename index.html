@@ -34,12 +34,80 @@
   .cfg-note { color: #e9d9b4; font-size: 12px; text-align: center; max-width: 320px; margin-top: 12px; opacity: .85; text-shadow: 0 2px 6px rgba(0,0,0,.8); }
   /* tela de carregamento: mesmo fundo do menu */
   #loading {
-    position: fixed; inset: 0; z-index: 500; display: none; flex-direction: column; align-items: center; justify-content: center;
+    position: fixed; inset: 0; z-index: 500; display: flex; flex-direction: column; align-items: center; justify-content: center;
     background:
       radial-gradient(ellipse at center, rgba(20,12,4,.35) 0%, rgba(12,7,2,.78) 100%),
       linear-gradient(rgba(20,12,4,.25), rgba(20,12,4,.25)),
       #1a1109 url('menu-bg.jpg') center / cover no-repeat;
-    color: #f6e7c1; opacity: 1; transition: opacity .5s ease;
+    color: #f6e7c1; opacity: 1; transition: opacity .6s ease;
+  }
+  .loader-scene {
+    position: relative; width: 220px; height: 180px; margin-bottom: 10px;
+  }
+  .lowpoly-guy {
+    position: absolute; left: 50%; top: 30px; transform: translateX(-50%);
+    animation: walk 1.2s ease-in-out infinite;
+  }
+  .head {
+    width: 36px; height: 36px; background: #f0c070; border-radius: 4px;
+    position: relative; margin: 0 auto 2px; box-shadow: inset -6px -6px 0 #d4a050;
+  }
+  .head::after {
+    content: ''; position: absolute; top: 10px; left: 8px; width: 8px; height: 6px;
+    background: #3b2410; border-radius: 2px; box-shadow: 14px 0 0 #3b2410;
+  }
+  .body {
+    width: 42px; height: 48px; background: #6b4423; margin: 0 auto;
+    clip-path: polygon(15% 0, 85% 0, 100% 100%, 0 100%);
+    box-shadow: inset -8px -8px 0 #4a2e16;
+  }
+  .arm {
+    position: absolute; top: 38px; width: 14px; height: 42px; background: #f0c070;
+    border-radius: 3px; box-shadow: inset -4px -4px 0 #d4a050;
+  }
+  .arm.left { left: 8px; transform-origin: top center; animation: carry 1.2s ease-in-out infinite; }
+  .arm.right { right: 8px; transform-origin: top center; animation: carry 1.2s ease-in-out infinite reverse; }
+  .leg {
+    position: absolute; top: 86px; width: 16px; height: 46px; background: #3b2410;
+    border-radius: 2px;
+  }
+  .leg.left { left: 18px; animation: step 1.2s ease-in-out infinite; }
+  .leg.right { right: 18px; animation: step 1.2s ease-in-out infinite reverse; }
+  .box {
+    position: absolute; top: 48px; left: 50%; transform: translateX(-50%);
+    width: 52px; height: 40px; background: #e8bd4e;
+    border: 3px solid #8a5a1f; border-radius: 3px;
+    box-shadow: inset -6px -6px 0 #c9962b, 0 4px 0 #6b4423;
+    animation: bobbox 1.2s ease-in-out infinite;
+  }
+  .box::before {
+    content: ''; position: absolute; top: 8px; left: 50%; width: 70%; height: 3px;
+    background: #8a5a1f; transform: translateX(-50%);
+  }
+  .shadow {
+    position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%);
+    width: 90px; height: 12px; background: rgba(0,0,0,.35); border-radius: 50%;
+    filter: blur(3px); animation: shadow 1.2s ease-in-out infinite;
+  }
+  @keyframes walk {
+    0%, 100% { transform: translateX(-50%) translateY(0); }
+    50% { transform: translateX(-50%) translateY(-6px); }
+  }
+  @keyframes carry {
+    0%, 100% { transform: rotate(-8deg); }
+    50% { transform: rotate(8deg); }
+  }
+  @keyframes step {
+    0%, 100% { transform: rotate(12deg); }
+    50% { transform: rotate(-12deg); }
+  }
+  @keyframes bobbox {
+    0%, 100% { transform: translateX(-50%) translateY(0) rotate(-2deg); }
+    50% { transform: translateX(-50%) translateY(-4px) rotate(2deg); }
+  }
+  @keyframes shadow {
+    0%, 100% { transform: translateX(-50%) scaleX(1); opacity: .35; }
+    50% { transform: translateX(-50%) scaleX(.85); opacity: .25; }
   }
   #loadBar { width: min(72vw, 380px); height: 16px; margin-top: 26px; border: 2px solid rgba(232,189,78,.65); border-radius: 9px; background: rgba(20,12,4,.75); overflow: hidden; }
   #loadFill { height: 100%; width: 0; background: linear-gradient(#e8bd4e, #c9962b); transition: width .25s ease; }
@@ -254,8 +322,6 @@
   <button class="menu-btn cfg-row" id="cfg_luz" onclick="toggleQual('luz')"></button>
   <button class="menu-btn cfg-row" id="cfg_sombra" onclick="toggleQual('sombra')"></button>
   <button class="menu-btn cfg-row" id="cfg_atmos" onclick="toggleQual('atmos')"></button>
-  <button class="menu-btn cfg-row" id="cfg_fx" onclick="toggleQual('fx')"></button>
-  <button class="menu-btn cfg-row" id="cfg_bloom" onclick="toggleQual('bloom')"></button>
   <div class="cfg-note">Vale a partir da próxima partida. Desative para ganhar FPS em aparelhos mais fracos.</div>
   <button class="menu-btn btn-back" onclick="backToMain()">Voltar</button>
 </div>
@@ -318,9 +384,21 @@
 </div>
 
 <div id="loading">
+  <div class="loader-scene">
+    <div class="lowpoly-guy">
+      <div class="head"></div>
+      <div class="body"></div>
+      <div class="arm left"></div>
+      <div class="arm right"></div>
+      <div class="leg left"></div>
+      <div class="leg right"></div>
+      <div class="box"></div>
+    </div>
+    <div class="shadow"></div>
+  </div>
   <h1>TETA TACARO</h1>
-  <div id="loadBar"><div id="loadFill"></div></div>
-  <div id="loadTxt">Carregando…</div>
+  <div id="loadBar"><div id="loadFill" style="width:8%"></div></div>
+  <div id="loadTxt">Os caras estão chegando com os dados…</div>
 </div>
 
 <div id="endScreen">
@@ -338,15 +416,40 @@
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/FBXLoader.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/OBJLoader.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/utils/SkeletonUtils.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
 <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 <script>
-const $ = id => document.getElementById(id);
+// Esconde a tela de carregamento assim que o menu estiver pronto
+function hideSplash() {
+  const el = document.getElementById('loading');
+  if (!el || el.style.display === 'none') return;
+  el.style.opacity = '0';
+  setTimeout(() => { el.style.display = 'none'; }, 650);
+}
+
+// Mostra progresso enquanto o servidor acorda
+let splashProg = 8;
+const splashTimer = setInterval(() => {
+  const fill = document.getElementById('loadFill');
+  const txt = document.getElementById('loadTxt');
+  if (!fill || !txt) return;
+  splashProg = Math.min(splashProg + Math.random() * 4, 92);
+  fill.style.width = splashProg + '%';
+  if (splashProg > 40) txt.textContent = 'Os caras estão chegando com os dados…';
+  if (splashProg > 70) txt.textContent = 'Quase descarregando…';
+}, 800);
+
+window.addEventListener('load', () => {
+  clearInterval(splashTimer);
+  const fill = document.getElementById('loadFill');
+  const txt = document.getElementById('loadTxt');
+  if (fill) fill.style.width = '100%';
+  if (txt) txt.textContent = 'Pronto!';
+  setTimeout(hideSplash, 400);
+});
+
+// Segurança: some depois de 25s mesmo se algo falhar
+setTimeout(hideSplash, 25000);
+
 window.addEventListener('error', e => { const b = $('err'); b.style.display = 'block'; b.textContent = 'Erro: ' + e.message; });
 
 const SERVER_URL = "https://teta-tacaro.onrender.com";
@@ -1213,14 +1316,12 @@ function timerUpdate() {
 function showOnlineMenu() { $('menu').style.display = 'none'; $('roomMenu').style.display = 'flex'; getSocket(); }
 function backToMain() { $('roomMenu').style.display = 'none'; $('modeMenu').style.display = 'none'; $('cfgMenu').style.display = 'none'; $('menu').style.display = 'flex'; }
 /* ---------- CONFIGURAÇÕES · QUALIDADE (salvas no aparelho) ---------- */
-const QUAL = { luz: true, sombra: true, atmos: true, fx: true, bloom: !isTouch };
+const QUAL = { luz: true, sombra: true, atmos: true };
 try { const s = JSON.parse(localStorage.getItem('tt_qual') || 'null'); if (s) for (const k in QUAL) if (typeof s[k] === 'boolean') QUAL[k] = s[k]; } catch (e) {}
 const QUAL_INFO = {
   luz:    ['💡 Iluminação', 'Lâmpadas do teto, postes e luzes que piscam'],
   sombra: ['🌓 Sombras', 'Sombras do sol e das lâmpadas'],
-  atmos:  ['🌫️ Atmosfera', 'Névoa, brilho das lâmpadas, frio e filtros de tela'],
-  fx:     ['✨ Efeitos extras', 'Raios de luz, poeira no ar, poças de luz no chão e a placa pendurada'],
-  bloom:  ['🌟 Brilho e filtro de cor', 'Bloom nas luzes, cor de cinema, vinheta e granulado (pesado em celular fraco)']
+  atmos:  ['🌫️ Atmosfera', 'Névoa, brilho das lâmpadas, frio e filtros de tela']
 };
 function renderCfg() {
   for (const k in QUAL_INFO) { const b = $('cfg_' + k); if (!b) continue; b.className = 'menu-btn cfg-row ' + (QUAL[k] ? 'on' : 'off'); b.innerHTML = '<span>' + QUAL_INFO[k][0] + '<small>' + QUAL_INFO[k][1] + '</small></span><span class="cfg-st">' + (QUAL[k] ? 'ATIVADA' : 'DESATIVADA') + '</span>'; }
@@ -1422,30 +1523,13 @@ function canvasTex(w, h, draw, rx, ry) {
   const c = document.createElement('canvas'); c.width = w; c.height = h; draw(c.getContext('2d'), w, h);
   const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(rx, ry); t.anisotropy = 4; return t;
 }
-const FACET_TEX = true;   // piso e teto em triângulos facetados (low poly), como na imagem de referência. Para voltar ao visual antigo, troque para false.
-const CEIL_TILE = FACET_TEX ? 3.6 : .6;
-function facetTex(size, n, rgb, vary) {   // grade de triângulos com tons ligeiramente diferentes
-  return canvasTex(size, size, (g, w, h) => {
-    let sd = 7; const rnd = () => (sd = sd * 16807 % 2147483647) / 2147483647, cw = w / n, ch = h / n;
-    for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
-      const x0 = i * cw, y0 = j * ch, x1 = x0 + cw, y1 = y0 + ch, alt = (i + j) % 2;
-      const tris = alt ? [[x0, y0, x1, y0, x0, y1], [x1, y0, x1, y1, x0, y1]] : [[x0, y0, x1, y0, x1, y1], [x0, y0, x1, y1, x0, y1]];
-      tris.forEach(t => {
-        const v = 1 + (rnd() - .5) * vary; g.fillStyle = 'rgb(' + Math.min(255, rgb[0] * v | 0) + ',' + Math.min(255, rgb[1] * v | 0) + ',' + Math.min(255, rgb[2] * v | 0) + ')';
-        g.beginPath(); g.moveTo(t[0], t[1]); g.lineTo(t[2], t[3]); g.lineTo(t[4], t[5]); g.closePath(); g.fill(); g.strokeStyle = g.fillStyle; g.lineWidth = 1; g.stroke();
-      });
-    }
-    for (let i = 0; i < size * size / 40; i++) { g.fillStyle = Math.random() < .5 ? 'rgba(0,0,0,.035)' : 'rgba(255,255,255,.05)'; g.fillRect(Math.random() * w, Math.random() * h, 2, 2); }
-  }, 1, 1);
-}
-const floorTexOld = () => canvasTex(256, 256, (g, w, h) => {
+const floorTex = () => canvasTex(256, 256, (g, w, h) => {
   g.fillStyle = '#c9bda6'; g.fillRect(0, 0, w, h);
   g.fillStyle = 'rgba(255,248,230,.16)'; g.beginPath(); g.moveTo(0, 0); g.lineTo(w, 0); g.lineTo(0, h); g.closePath(); g.fill();
   g.fillStyle = 'rgba(60,45,25,.10)'; g.beginPath(); g.moveTo(w, h); g.lineTo(w, 0); g.lineTo(0, h); g.closePath(); g.fill();
   for (let i = 0; i < 2500; i++) { g.fillStyle = Math.random() < .5 ? 'rgba(0,0,0,.05)' : 'rgba(255,255,255,.1)'; g.fillRect(Math.random() * w, Math.random() * h, 2, 2); }
   g.strokeStyle = '#8f8571'; g.lineWidth = 4; g.strokeRect(0, 0, w, h);
 }, W / 2, D / 2);
-const floorTex = () => FACET_TEX ? facetTex(256, 3, [158, 156, 148], .30) : floorTexOld();
 const signTex = () => canvasTex(512, 128, (g, w, h) => {
   g.fillStyle = '#dc2626'; g.fillRect(0, 0, w, h);
   g.fillStyle = '#fff'; g.font = 'bold 72px Arial'; g.textAlign = 'center'; g.textBaseline = 'middle';
@@ -1843,8 +1927,7 @@ async function _startGame(solo) {
   await loadMapData();
   if (!mySpawn) { const sp0 = (MAPDATA || []).find(o => o.t === 'spawn'); if (sp0) { camera.position.set(sp0.x, 1.7, sp0.z); yaw = (sp0.rot || 0) * Math.PI / 180; } }
   if (zMode && !solo) { const k = Math.max(0, lobbyPlayers.findIndex(q => q.id === myId)); camera.position.x += Math.cos(k * 1.05) * 1.7; camera.position.z += Math.sin(k * 1.05) * 1.7; }   // cada jogador nasce num ponto em volta
-  buildMap(); buildExtras(); polish(); nightExtras(); buildCold(); applyQuality();
-  try { if (typeof vfxBuild === 'function') vfxBuild(); } catch (e) { console.warn('vfxBuild', e); }   // (grime() removido: eram as manchas escuras redondas no chão)
+  buildMap(); buildExtras(); polish(); nightExtras(); buildCold(); applyQuality();   // (grime() removido: eram as manchas escuras redondas no chão)
   setLoad(65, 'Carregando texturas…'); await nextPaint();
   onTexStep = f => setLoad(65 + f * 28, 'Carregando texturas…');
   await tryTextures(); onTexStep = null; setLoad(94, 'Quase pronto…');
@@ -3776,7 +3859,7 @@ function buildFloors(MP) {
   MP.filter(o => o.t === 'floor').forEach((o, i) => {
     const k = FM[o.mat] ? o.mat : 'piso', key = FM[k][0], w = +o.w || 10, d = +o.d || 10;
     let m;
-    if (k === 'piso') { const t = floorTex(); t.repeat.set(w / (FACET_TEX ? 4 : 2), d / (FACET_TEX ? 4 : 2)); m = std(0xffffff, { map: t, bumpMap: t, bumpScale: FACET_TEX ? .5 : 2, roughness: FACET_TEX ? .55 : .9, metalness: 0 }); m.envMapIntensity = FACET_TEX ? .3 : .12; }   // piso fosco: quase sem reflexo (aumente roughness/envMapIntensity para brilhar de novo)
+    if (k === 'piso') { const t = floorTex(); t.repeat.set(w / 2, d / 2); m = std(0xffffff, { map: t, bumpMap: t, bumpScale: 2, roughness: .9, metalness: 0 }); m.envMapIntensity = .12; }   // piso fosco: quase sem reflexo (aumente roughness/envMapIntensity para brilhar de novo)
     else if (k === 'asfalto') { const t = noiseTex('#3b3f46', .5, w / 4, d / 4); m = std(0xffffff, { map: t, bumpMap: t, bumpScale: 3, roughness: .95 }); }
     else if (k === 'rua') m = std(0xffffff, { map: noiseTex('#2b2e34', .4, w / 4, d / 4), roughness: .95 });
     else if (k === 'concreto') m = std(0xffffff, { map: noiseTex('#6b7280', .35, w / 4, d / 4), roughness: .9 });
@@ -3795,7 +3878,7 @@ function buildCeilings(MP) {
   const hous = [], tube = [], rod = [], beam = [], duct = [], truss = [], e = 1e-6;
   MP.filter(o => o.t === 'ceiling').forEach(o => {
     const w = +o.w || 10, d = +o.d || 10, x1 = o.x - w / 2, x2 = o.x + w / 2, z1 = o.z - d / 2, z2 = o.z + d / 2;
-    const m = std(0xffffff, { map: ceilTex() }); m.map.repeat.set(w / CEIL_TILE, d / CEIL_TILE); m.userData.area = [w, d]; tx('teto', m);
+    const m = std(0xffffff, { map: ceilTex() }); m.map.repeat.set(w / .6, d / .6); m.userData.area = [w, d]; tx('teto', m);
     const ce = new THREE.Mesh(new THREE.PlaneGeometry(w, d), m); ce.rotation.x = Math.PI / 2; ce.position.set(o.x, H, o.z); scene.add(ce);
     if (o.lights === false) return;
     for (let x = x1 + 5; x <= x2 - 5 + e; x += 10) for (let z = z1 + 5; z <= z2 - 3 + e; z += 8) {
@@ -4376,8 +4459,7 @@ $('closeInv').onclick=toggleInv;$('combBtn').onclick=combine;$('eqBtn').onclick=
 addEventListener('keydown',e=>{if(!started)return;if(e.code==='KeyE')pickup();if(e.code==='KeyF')throwItem();if(e.code==='KeyI')toggleInv();});
 
 /* ---------- ACABAMENTO VISUAL ---------- */
-const ceilTexOld=()=>canvasTex(64,64,(g,w,h)=>{g.fillStyle='#3a3834';g.fillRect(0,0,w,h);for(let i=0;i<150;i++){g.fillStyle='rgba(0,0,0,.12)';g.fillRect(Math.random()*w,Math.random()*h,2,2);}g.strokeStyle='#262522';g.lineWidth=3;g.strokeRect(0,0,w,h);},133,107);
-const ceilTex=()=>FACET_TEX?facetTex(256,3,[112,110,104],.34):ceilTexOld();
+const ceilTex=()=>canvasTex(64,64,(g,w,h)=>{g.fillStyle='#3a3834';g.fillRect(0,0,w,h);for(let i=0;i<150;i++){g.fillStyle='rgba(0,0,0,.12)';g.fillRect(Math.random()*w,Math.random()*h,2,2);}g.strokeStyle='#262522';g.lineWidth=3;g.strokeRect(0,0,w,h);},133,107);
 function polish(){
   const SKY_R=450, SKY_HORIZON=.65;   // SKY_HORIZON = altura (0 topo → 1 base) em que o horizonte aparece na foto
   const sk=canvasTex(16,256,(g,w,h)=>{const gr=g.createLinearGradient(0,0,0,h);gr.addColorStop(0,'#1f4f9e');gr.addColorStop(.55,'#6ea0d8');gr.addColorStop(.66,'#cfe3f5');gr.addColorStop(1,'#4d6a45');g.fillStyle=gr;g.fillRect(0,0,w,h);},1,1);
@@ -4646,200 +4728,6 @@ function animate() {
   perfGovernor(dt);
   timerUpdate();
   try { coldUpdate(dt, clock.elapsedTime); } catch (e) { if (!coldUpdate.err) { coldUpdate.err = 1; console.warn('coldUpdate', e); } }
-  if (typeof vfxRender === 'function') vfxRender(dt, clock.elapsedTime); else renderer.render(scene, camera);
-}
-</script>
-<script>
-/* ==========================================================================
-   VISUAL+ · atmosfera, brilho, partículas e filtros
-   Raios de luz · poças de luz no chão · poeira no ar · brilho (bloom) · correção de cor · placa pendurada
-   Liga/desliga em ⚙️ Configurações (✨ Efeitos extras e 🌟 Brilho e filtro de cor).
-   Tudo aqui é protegido por try/catch: se algo falhar, o jogo continua normal.
-   ========================================================================== */
-const VFX_CFG = {
-  sign:  { on: true, x: null, z: null, y: 3.55, rot: 0, w: 4.4 },   // placa "TETA TACARO" (x/z nulos = centro do maior teto). Mude x, z e rot para mover.
-  bloom: { strength: .34, radius: .55, threshold: .82 },            // brilho das lâmpadas
-  grade: { sat: 1.10, con: 1.06, tone: 1.0, vig: .22, grain: .035, ca: .010 },   // filtro: saturação, contraste, tom quente/frio, vinheta, granulado, aberração
-  dust: 260,        // partículas de poeira (celular usa menos)
-  shafts: .075,     // intensidade dos raios de luz (0 = sem)
-  pools: .16        // intensidade das poças de luz no chão (0 = sem)
-};
-const VFX = { comp: null, grade: null, dust: null, boxes: [], w: 0, h: 0, pr: 0 };
-const _vnum = (v, d) => v != null && v !== '' && !isNaN(+v) ? +v : d;
-
-function vfxLamps() {
-  const out = [];
-  CEIL_GLOW.forEach(([x, z]) => out.push({ x, z, y: H - .86, w: 3.2, d: 1.3, rot: 0 }));
-  (MAPDATA || []).forEach(o => {
-    if (o.t !== 'lamp' || (o.kind || 'teto') !== 'teto' || o.light === false) return;
-    if (!(+o.w > 0 && +o.d > 0)) return;
-    out.push({ x: +o.x, z: +o.z, y: _vnum(o.sy, HC - .05), w: +o.w, d: +o.d, rot: +o.rot || 0 });
-  });
-  return out.slice(0, 140);
-}
-
-function vfxBuild() {
-  VFX.boxes = (MAPDATA || []).filter(o => o.t === 'ceiling').map(o => {
-    const w = +o.w || 10, d = +o.d || 10;
-    return { x1: o.x - w / 2, x2: o.x + w / 2, z1: o.z - d / 2, z2: o.z + d / 2, a: w * d, cx: o.x, cz: o.z };
-  });
-  if (QUAL.fx) {
-    try { if (QUAL.luz) vfxLight(); } catch (e) { console.warn('vfx luz', e); }
-    try { vfxDust(); } catch (e) { console.warn('vfx poeira', e); }
-    try { if (VFX_CFG.sign.on) vfxSign(); } catch (e) { console.warn('vfx placa', e); }
-  }
-  try { if (QUAL.bloom) vfxComposer(); } catch (e) { console.warn('vfx composer', e); VFX.comp = null; }
-}
-
-/* ---- raios de luz (cones aditivos, 1 malha só) + poças de luz no chão + brilho das lâmpadas ---- */
-function vfxLight() {
-  const lamps = vfxLamps(); if (!lamps.length) return;
-  if (VFX_CFG.shafts > 0) {
-    const SEG = 10, pos = [], col = [], idx = []; let vi = 0;
-    lamps.forEach(L => {
-      const a = L.rot * Math.PI / 180, c = Math.cos(a), s = Math.sin(a), len = 3.4;
-      const rx0 = Math.max(.3, L.w / 2), rz0 = Math.max(.2, L.d / 2), rx1 = rx0 + 1.1, rz1 = rz0 + 1.3;
-      for (let r = 0; r < 2; r++) for (let i = 0; i < SEG; i++) {
-        const th = i / SEG * Math.PI * 2, lx = Math.cos(th) * (r ? rx1 : rx0), lz = Math.sin(th) * (r ? rz1 : rz0), k = r ? 0 : 1;
-        pos.push(L.x + lx * c + lz * s, L.y - (r ? len : .05), L.z - lx * s + lz * c); col.push(k, k * .88, k * .62);
-      }
-      for (let i = 0; i < SEG; i++) { const j = (i + 1) % SEG, a0 = vi + i, a1 = vi + j, b0 = vi + SEG + i, b1 = vi + SEG + j; idx.push(a0, b0, a1, a1, b0, b1); }
-      vi += SEG * 2;
-    });
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); g.setIndex(idx);
-    const m = new THREE.MeshBasicMaterial({ vertexColors: true, color: new THREE.Color(1, 1, 1).multiplyScalar(VFX_CFG.shafts), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false });
-    const mesh = new THREE.Mesh(g, m); mesh.frustumCulled = false; mesh.renderOrder = 3; scene.add(mesh);
-  }
-  if (VFX_CFG.pools > 0) {
-    const pg = new THREE.PlaneGeometry(1, 1); pg.rotateX(-Math.PI / 2);
-    const pm = new THREE.MeshBasicMaterial({ map: glowT, color: new THREE.Color(1, .86, .6).multiplyScalar(VFX_CFG.pools), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, polygonOffset: true, polygonOffsetFactor: -3 });
-    const im = new THREE.InstancedMesh(pg, pm, lamps.length), d = new THREE.Object3D();
-    lamps.forEach((L, i) => { d.position.set(L.x, .05, L.z); d.rotation.set(0, L.rot * Math.PI / 180, 0); d.scale.set(L.w + 3.4, 1, L.d + 2.8); d.updateMatrix(); im.setMatrixAt(i, d.matrix); });
-    im.frustumCulled = false; im.renderOrder = 2; scene.add(im);
-  }
-  if (QUAL.atmos && glowT) {   // brilho (halo) das luminárias do editor; as do teto automático já têm o seu
-    (MAPDATA || []).forEach(o => {
-      if (o.t !== 'lamp' || (o.kind || 'teto') !== 'teto' || o.light === false || !(+o.w > 0 && +o.d > 0)) return;
-      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowT, color: 0xfff0d0, transparent: true, opacity: .24, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
-      sp.position.set(+o.x, _vnum(o.sy, HC - .05) - .15, +o.z); sp.scale.set(5, 5, 1); scene.add(sp);
-    });
-  }
-}
-
-/* ---- poeira flutuando no ar (pega a luz, pisca de leve) ---- */
-function vfxDust() {
-  const N = isTouch ? Math.min(120, VFX_CFG.dust) : VFX_CFG.dust, R = 14, pos = new Float32Array(N * 3), ph = new Float32Array(N), vel = new Float32Array(N * 3), cp = camera.position;
-  for (let i = 0; i < N; i++) {
-    pos[i * 3] = cp.x + (Math.random() * 2 - 1) * R; pos[i * 3 + 1] = .4 + Math.random() * (H - .9); pos[i * 3 + 2] = cp.z + (Math.random() * 2 - 1) * R;
-    ph[i] = Math.random(); vel[i * 3] = (Math.random() - .5) * .12; vel[i * 3 + 1] = (Math.random() - .5) * .06; vel[i * 3 + 2] = (Math.random() - .5) * .12;
-  }
-  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('aPh', new THREE.BufferAttribute(ph, 1));
-  const m = new THREE.ShaderMaterial({
-    uniforms: { uT: { value: 0 }, uScale: { value: 600 }, uCol: { value: new THREE.Color(1, .93, .78) }, uOp: { value: .55 } },
-    vertexShader: 'attribute float aPh; uniform float uT, uScale; varying float vA; void main(){ vec4 mv = modelViewMatrix * vec4(position, 1.); gl_Position = projectionMatrix * mv; float z = -mv.z; float tw = .55 + .45 * sin(uT * 1.3 + aPh * 6.2831); vA = tw * smoothstep(.4, 1.8, z) * (1. - smoothstep(9., 15., z)); gl_PointSize = clamp(uScale * .05 / max(z, .1), 1.2, 7.); }',
-    fragmentShader: 'uniform vec3 uCol; uniform float uOp; varying float vA; void main(){ float d = length(gl_PointCoord - .5); float a = smoothstep(.5, 0., d) * vA * uOp; if (a < .01) discard; gl_FragColor = vec4(uCol, a); }',
-    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending
-  });
-  const p = new THREE.Points(g, m); p.frustumCulled = false; p.renderOrder = 5; scene.add(p);
-  VFX.dust = { p, g, m, pos, vel, N, R };
-}
-function vfxIndoors() {
-  const cp = camera.position; if (cp.y > H) return false;
-  if (!VFX.boxes.length) return true;
-  for (const b of VFX.boxes) if (cp.x > b.x1 && cp.x < b.x2 && cp.z > b.z1 && cp.z < b.z2) return true;
-  return false;
-}
-function vfxUpdate(dt, t) {
-  const D = VFX.dust; if (!D) return;
-  const ind = vfxIndoors(); D.p.visible = ind; if (!ind) return;
-  const cp = camera.position, R = D.R, pos = D.pos, vel = D.vel, N = D.N;
-  for (let i = 0; i < N; i++) {
-    const k = i * 3; pos[k] += vel[k] * dt + Math.sin(t * .4 + i) * .004; pos[k + 1] += vel[k + 1] * dt; pos[k + 2] += vel[k + 2] * dt + Math.cos(t * .35 + i * 1.7) * .004;
-    if (pos[k] - cp.x > R) pos[k] -= 2 * R; else if (pos[k] - cp.x < -R) pos[k] += 2 * R;
-    if (pos[k + 2] - cp.z > R) pos[k + 2] -= 2 * R; else if (pos[k + 2] - cp.z < -R) pos[k + 2] += 2 * R;
-    if (pos[k + 1] > H - .3) pos[k + 1] = .4; else if (pos[k + 1] < .3) pos[k + 1] = H - .5;
-  }
-  D.g.attributes.position.needsUpdate = true;
-  D.m.uniforms.uT.value = t;
-  D.m.uniforms.uScale.value = innerHeight * renderer.getPixelRatio() / (2 * Math.tan(camera.fov * Math.PI / 360));
-}
-
-/* ---- placa verde "TETA TACARO" pendurada no teto (como na imagem de referência) ---- */
-function vfxSign() {
-  const S = VFX_CFG.sign; let x = S.x, z = S.z;
-  if (x == null || z == null) { const b = VFX.boxes.slice().sort((a, c) => c.a - a.a)[0]; if (!b) return; x = b.cx; z = b.cz; }
-  const w = S.w, h = w * .5, cvs = document.createElement('canvas'); cvs.width = 1024; cvs.height = 512;
-  const g = cvs.getContext('2d'), tex = new THREE.CanvasTexture(cvs); tex.anisotropy = 4;
-  const draw = () => {
-    g.clearRect(0, 0, 1024, 512); g.fillStyle = '#1d5a34'; g.fillRect(0, 0, 1024, 512);
-    let sd = 11; const rnd = () => (sd = sd * 16807 % 2147483647) / 2147483647, nx = 8, ny = 4, cw = 1024 / nx, ch = 512 / ny;
-    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
-      const x0 = i * cw, y0 = j * ch, f = (i + j) % 2 ? [[x0, y0], [x0 + cw, y0], [x0, y0 + ch]] : [[x0, y0], [x0 + cw, y0], [x0 + cw, y0 + ch]], f2 = (i + j) % 2 ? [[x0 + cw, y0], [x0 + cw, y0 + ch], [x0, y0 + ch]] : [[x0, y0], [x0 + cw, y0 + ch], [x0, y0 + ch]];
-      [f, f2].forEach(tr => { const v = 1 + (rnd() - .5) * .34; g.fillStyle = 'rgb(' + (29 * v | 0) + ',' + (90 * v | 0) + ',' + (52 * v | 0) + ')'; g.beginPath(); g.moveTo(tr[0][0], tr[0][1]); g.lineTo(tr[1][0], tr[1][1]); g.lineTo(tr[2][0], tr[2][1]); g.closePath(); g.fill(); g.strokeStyle = g.fillStyle; g.lineWidth = 1; g.stroke(); });
-    }
-    g.strokeStyle = 'rgba(239,227,198,.35)'; g.lineWidth = 8; g.strokeRect(14, 14, 996, 484);
-    g.fillStyle = '#efe3c6'; g.textAlign = 'center'; g.textBaseline = 'alphabetic'; g.font = "148px Bungee, Impact, 'Arial Black', sans-serif";
-    g.fillText('TETA', 512, 190); g.fillText('TACARO', 512, 330);
-    g.strokeStyle = '#efe3c6'; g.fillStyle = '#efe3c6'; g.lineWidth = 12; g.lineCap = 'round'; g.lineJoin = 'round';
-    g.beginPath(); g.moveTo(410, 372); g.lineTo(446, 372); g.lineTo(474, 450); g.lineTo(590, 450); g.lineTo(616, 392); g.lineTo(456, 392); g.stroke();
-    g.beginPath(); g.moveTo(498, 392); g.lineTo(508, 450); g.moveTo(540, 392); g.lineTo(544, 450); g.moveTo(582, 392); g.lineTo(578, 450); g.lineWidth = 7; g.stroke();
-    g.beginPath(); g.arc(494, 480, 13, 0, 7); g.arc(576, 480, 13, 0, 7); g.fill();
-    tex.needsUpdate = true;
-  };
-  draw();
-  try { if (document.fonts && document.fonts.load) document.fonts.load('100px Bungee').then(draw).catch(() => {}); } catch (e) {}
-  const mat = new THREE.MeshStandardMaterial({ map: tex, emissiveMap: tex, emissive: 0xffffff, emissiveIntensity: .38, roughness: .6, side: THREE.DoubleSide });
-  const sg = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat), a = (S.rot || 0) * Math.PI / 180;
-  sg.position.set(x, S.y, z); sg.rotation.y = a; sg.castShadow = false; scene.add(sg);
-  const rod = std(0x1f1f1f, { roughness: .6 }), top = S.y + h / 2, rl = Math.max(.1, H - top);
-  [-1, 1].forEach(k => { const o = k * w * .32; box(.05, rl, .05, rod, x + Math.cos(a) * o, top + rl / 2, z - Math.sin(a) * o, false, false); });
-}
-
-/* ---- pós-processamento: brilho (bloom) + correção de cor/vinheta/granulado ---- */
-function vfxComposer() {
-  if (!(THREE.EffectComposer && THREE.RenderPass && THREE.UnrealBloomPass && THREE.ShaderPass && THREE.CopyShader)) { console.warn('Pós-processamento indisponível (scripts não carregaram); seguindo sem brilho/filtro.'); return; }
-  const pr = renderer.getPixelRatio(); let rt;
-  try { if (renderer.capabilities.isWebGL2 && THREE.WebGLMultisampleRenderTarget) { rt = new THREE.WebGLMultisampleRenderTarget(innerWidth * pr | 0, innerHeight * pr | 0, { format: THREE.RGBAFormat }); rt.samples = 4; } } catch (e) { rt = undefined; }
-  const comp = new THREE.EffectComposer(renderer, rt); comp.setPixelRatio(pr); comp.setSize(innerWidth, innerHeight);
-  comp.addPass(new THREE.RenderPass(scene, camera));
-  const B = VFX_CFG.bloom; comp.addPass(new THREE.UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), B.strength, B.radius, B.threshold));
-  const G = VFX_CFG.grade;
-  const grade = new THREE.ShaderPass({
-    uniforms: { tDiffuse: { value: null }, time: { value: 0 }, res: { value: new THREE.Vector2(innerWidth * pr, innerHeight * pr) }, sat: { value: G.sat }, con: { value: G.con }, tone: { value: G.tone }, vig: { value: G.vig }, grain: { value: G.grain }, ca: { value: G.ca } },
-    vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.); }',
-    fragmentShader: [
-      'uniform sampler2D tDiffuse; uniform float time, sat, con, tone, vig, grain, ca; uniform vec2 res; varying vec2 vUv;',
-      'float hash(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }',
-      'void main(){',
-      '  vec2 d = vUv - .5; float r2 = dot(d, d); vec2 off = d * r2 * ca;',
-      '  vec3 c = vec3(texture2D(tDiffuse, vUv + off).r, texture2D(tDiffuse, vUv).g, texture2D(tDiffuse, vUv - off).b);',
-      '  float l = dot(c, vec3(.299, .587, .114));',
-      '  c = mix(vec3(l), c, sat); c = (c - .5) * con + .5;',
-      '  c += mix(vec3(-.012, .0, .018), vec3(.03, .012, -.02), smoothstep(.2, .8, l)) * tone;',
-      '  c *= 1. - smoothstep(.35, .95, length(d * vec2(1., .9))) * vig;',
-      '  c += (hash(vUv * res + fract(time) * 91.7) - .5) * grain;',
-      '  gl_FragColor = vec4(max(c, 0.), 1.);',
-      '}'
-    ].join('\n')
-  });
-  comp.addPass(grade);
-  VFX.comp = comp; VFX.grade = grade; VFX.w = innerWidth; VFX.h = innerHeight; VFX.pr = pr;
-  console.log('✓ Visual+: bloom + filtro de cor ativos');
-}
-
-/* ---- chamado todo quadro no lugar de renderer.render ---- */
-function vfxRender(dt, t) {
-  try { vfxUpdate(dt, t); } catch (e) { if (!vfxUpdate.err) { vfxUpdate.err = 1; console.warn('vfxUpdate', e); } }
-  if (VFX.comp && QUAL.bloom && PERF.lvl < 3) {   // se o aparelho engasgar (nível de economia 3+), volta ao render simples
-    try {
-      const pr = renderer.getPixelRatio();
-      if (innerWidth !== VFX.w || innerHeight !== VFX.h || pr !== VFX.pr) {
-        VFX.w = innerWidth; VFX.h = innerHeight; VFX.pr = pr; VFX.comp.setPixelRatio(pr); VFX.comp.setSize(innerWidth, innerHeight); VFX.grade.uniforms.res.value.set(innerWidth * pr, innerHeight * pr);
-      }
-      VFX.grade.uniforms.time.value = t; VFX.comp.render(dt); return;
-    } catch (e) { console.warn('Pós-processamento falhou, usando render simples:', e); VFX.comp = null; }
-  }
   renderer.render(scene, camera);
 }
 </script>
