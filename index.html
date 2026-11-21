@@ -1334,13 +1334,14 @@ function bindSocket(s) {
     else if (others[d.id]) { const o = others[d.id]; o.position.set(d.x, 0, d.z); o.rotation.y = d.ry || 0; actorOf(o).revive(); }
   });
   s.on('matchTime', d => { matchEnd = performance.now() + (d.endsIn || 0); });
-  s.on('playerAttacked', d => { const o = others[d.id || d.attacker]; if (o) actorOf(o).attack(); });
+  s.on('playerAttacked', d => { const o = others[d.id || d.attacker]; if (o) { actorOf(o).attack(); try { const n = sfxArma(d.weapon != null ? d.weapon : o.userData.wpn); if (n) setTimeout(() => sfxPlay(n, .9, .95 + Math.random() * .1, o.position), 150); } catch (e) {} } });
+  s.on('powerSwitch', d => { try { powerSet(!!d.on, false); } catch (e) {} });
   s.on('playerHit', d => {
     if (d.id === myId) onlineHurt(d.health);
     else if (others[d.id]) { actorOf(others[d.id]).hit(); burst(new THREE.Vector3(others[d.id].position.x, 1.3, others[d.id].position.z), 0xffffff, 12); }
     if (d.by === myId) shake = Math.max(shake, .7);
   });
-  s.on('playerEquip', d => { const o = others[d.id]; if (o) actorOf(o).setWeapon(d.weapon === null || d.weapon === undefined ? null : makeItem(d.weapon)); });
+  s.on('playerEquip', d => { const o = others[d.id]; if (o) o.userData.wpn = d.weapon; if (o) actorOf(o).setWeapon(d.weapon === null || d.weapon === undefined ? null : makeItem(d.weapon)); });
   s.on('gameOver', d => { finalStats = d.stats || null; if (d.zombie) { endGame(!!d.win); return; } if (d.draw) { endGame(false, true); return; } endGame(d.teamMode ? d.winnerTeam === myTeam : d.winner === myId); });
   /* ---- Ataque Zumbi cooperativo ---- */
   s.on('zSpawnReq', d => {                       // o servidor pede ao anfitrião um zumbi novo
@@ -1800,6 +1801,7 @@ async function startGame(solo) {
 async function _startGame(solo) {
   if (started) return;
   if (typeof THREE === 'undefined') { alert('Não foi possível carregar o motor 3D (three.js). Verifique a internet.'); return; }
+  try { sfxInit(); } catch (e) { console.warn('sfxInit', e); }
   started = true; isSolo = solo;
   ['menu', 'lobby', 'roomMenu', 'modeMenu'].forEach(i => $(i).style.display = 'none'); $('fsBtn').style.display = 'none'; $('gearBtn').style.display = 'flex';
   const gameDiv = $('game');
@@ -1844,7 +1846,8 @@ async function _startGame(solo) {
   if (!mySpawn) { const sp0 = (MAPDATA || []).find(o => o.t === 'spawn'); if (sp0) { camera.position.set(sp0.x, 1.7, sp0.z); yaw = (sp0.rot || 0) * Math.PI / 180; } }
   if (zMode && !solo) { const k = Math.max(0, lobbyPlayers.findIndex(q => q.id === myId)); camera.position.x += Math.cos(k * 1.05) * 1.7; camera.position.z += Math.sin(k * 1.05) * 1.7; }   // cada jogador nasce num ponto em volta
   buildMap(); buildExtras(); polish(); nightExtras(); buildCold(); applyQuality();
-  try { if (typeof vfxBuild === 'function') vfxBuild(); } catch (e) { console.warn('vfxBuild', e); }   // (grime() removido: eram as manchas escuras redondas no chão)
+  try { if (typeof vfxBuild === 'function') vfxBuild(); } catch (e) { console.warn('vfxBuild', e); }
+  try { if (typeof powerBuild === 'function') powerBuild(); } catch (e) { console.warn('powerBuild', e); }   // (grime() removido: eram as manchas escuras redondas no chão)
   setLoad(65, 'Carregando texturas…'); await nextPaint();
   onTexStep = f => setLoad(65 + f * 28, 'Carregando texturas…');
   await tryTextures(); onTexStep = null; setLoad(94, 'Quase pronto…');
@@ -1939,6 +1942,8 @@ const ITEMS=[{n:'Baguete',d:14,e:'🥖'},{n:'Frigideira',d:20,e:'🍳'},{n:'Garr
 const rk=(a,b)=>Math.min(a,b)+','+Math.max(a,b),RECIPES={};ITEMS.forEach((it,i)=>{if(it.p)RECIPES[rk(...it.p)]=i;});
 let loot=[], fx=[], weapon=null, held=null, shake=0, swingP=0, ac=null;
 const pGeo=new THREE.BoxGeometry(.08,.08,.08);
+const PW = { on: true, k: 1, mats: [], sprites: [], lights: [], seq: null, box: null };   // estado da energia (disjuntor) — lógica em powerBuild/powerSet
+function pwMat(c) { const m = new THREE.MeshBasicMaterial({ color: c }); m.userData.pwC = c; PW.mats.push(m); return m; }
 function beep(f,d=.08,type='square'){try{ac=ac||new(window.AudioContext||webkitAudioContext)();const o=ac.createOscillator(),g=ac.createGain();o.type=type;o.frequency.value=f;g.gain.value=.04;o.connect(g);g.connect(ac.destination);o.start();o.stop(ac.currentTime+d);}catch(e){}}
 function burst(p,c,n=10){for(let i=0;i<n;i++){const m=new THREE.Mesh(pGeo,new THREE.MeshBasicMaterial({color:c,transparent:true}));m.position.copy(p);scene.add(m);fx.push({m,life:.6,v:new THREE.Vector3((Math.random()-.5)*4,Math.random()*3,(Math.random()-.5)*4)});}}
 function spearItem(){            // Lança: baguete presa na ponta do cabo da vassoura
@@ -2242,8 +2247,8 @@ function updateFP(dt, t) {
   // tempo do golpe / disparo (funciona mesmo sem os braços)
   if (fpAnim) {
     const A = fpAnim; A.t += dt;
-    if (A.kind === 'swing' && !A.done && A.t > .15) { A.done = true; fpKick = -.045; }
-    if ((A.kind === 'throw' || A.kind === 'fire') && !A.released && A.t >= A.rel) { A.released = true; releaseThrow(); if (A.kind === 'fire') fpKick = .03; }
+    if (A.kind === 'swing' && !A.done && A.t > .15) { A.done = true; fpKick = -.045; try { sfxSwing(); } catch (e) {} }
+    if ((A.kind === 'throw' || A.kind === 'fire') && !A.released && A.t >= A.rel) { A.released = true; releaseThrow(); if (A.kind === 'fire') { fpKick = .03; try { sfxFire(); } catch (e) {} } }
     if (A.t >= A.dur) fpAnim = null;
   }
   fpRoll = _lerp(fpRoll, 0, Math.min(1, dt * 12));
@@ -2783,7 +2788,7 @@ function attack(){
   if(gameOver||!started||zDowned)return;
   if(zMode){zFire();return;}
   const now=performance.now();if(now-lastAtk<30)return;lastAtk=now;
-  startFP('swing');beep(220,.07);
+  startFP('swing');if(!sfxWeaponLoaded())beep(220,.07);
   if(!isSolo){if(socket)socket.emit('attack',{room:currentRoom,weapon,dmg:30+(weapon!==null?ITEMS[weapon].d:0)});return;}
   setTimeout(()=>{if(gameOver)return;
   const fx_=-Math.sin(yaw),fz=-Math.cos(yaw),dmg=30+(weapon!==null?ITEMS[weapon].d:0);
@@ -2957,7 +2962,7 @@ function update(dt,t){
   let mx=-Math.sin(yaw)*f+Math.cos(yaw)*r,mz=-Math.cos(yaw)*f-Math.sin(yaw)*r;
   const l=Math.hypot(mx,mz);if(l>1){mx/=l;mz/=l;}
   move(camera.position,mx*6*dt,mz*6*dt,.4,playerUp);
-  bob+=Math.min(l,1)*dt*10;const sg=Math.sin(bob)>0;if(l>.1&&sg!==lastStep){lastStep=sg;beep(60,.05,'triangle');}
+  bob+=Math.min(l,1)*dt*10;const sg=Math.sin(bob)>0;let stepNow=false;if(l>.1&&sg!==lastStep){lastStep=sg;stepNow=true;}if(!sfxWalk(stepNow,l,onGround)&&stepNow)beep(60,.05,'triangle');
   // pulo + escada + andares (pisos elevados / telhado vêm do mapa)
   {
     const decks = DECKS(), ladders = LADDERS(), px = camera.position.x, pz = camera.position.z, feet = camera.position.y - 1.7;
@@ -2984,7 +2989,7 @@ function update(dt,t){
   // não sobrescreve o botão se estiver perto de um carro
   const nearCar = cars.some(c => Math.hypot(c.group.position.x - camera.position.x, c.group.position.z - camera.position.z) < 3.2);
   if (!nearCar) {
-    const pb=$('pickBtn'),tx=nr?'PEGAR '+ITEMS[nr.t].n+(isTouch?'':' [E]'):'';if(tx!==lastPick){lastPick=tx;pb.style.display=nr?'block':'none';pb.textContent=tx;}
+    const pwN=powerNear(),pb=$('pickBtn'),tx=pwN?'ACIONAR DISJUNTOR'+(isTouch?'':' [E]'):nr?'PEGAR '+ITEMS[nr.t].n+(isTouch?'':' [E]'):'';if(tx!==lastPick){lastPick=tx;pb.style.display=(nr||pwN)?'block':'none';pb.textContent=tx;}
   }
   }
 
@@ -3031,7 +3036,7 @@ function fxUpdate(dt,t){
   loot.forEach(o=>{if(o.taken){if(t-o.takenAt>=60)respawnLoot(o);return;}o.it.rotation.y=t*2;o.it.position.y=1.1+Math.sin(t*3+o.t)*.12;o.beam.material.opacity=.2+Math.sin(t*4)*.07;});
   updateFP(dt,t);
   shake=Math.max(0,shake-dt*3);
-  flick.forEach(f=>{if(t>f.next){f.on=Math.random()>.4;f.next=t+(f.on?.15+Math.random()*1.6:.04+Math.random()*.12);}f.l.intensity=f.on?f.b:f.b*.08;f.m.color.setHex(f.on?f.c:0x2a2a2a);f.s.material.opacity=f.on?.4:0;});
+  flick.forEach(f=>{if(!f.pole&&PW.k<.35){f.l.intensity=0;f.m.color.setHex(0x2a2a2a);f.s.material.opacity=0;return;}if(t>f.next){f.on=Math.random()>.4;f.next=t+(f.on?.15+Math.random()*1.6:.04+Math.random()*.12);}f.l.intensity=f.on?f.b:f.b*.08;f.m.color.setHex(f.on?f.c:0x2a2a2a);f.s.material.opacity=f.on?.4:0;});
 }
 
 /* ---------- FIM DO MODO CLÁSSICO SOLO: só vence quando TODOS os inimigos caírem (IAs + Homem Congelado) ---------- */
@@ -3208,7 +3213,7 @@ function zRemoteShot(d) {                     // tiro de outro jogador: só o vi
 }
 function zMelee() {                           // sem munição nenhuma: não trava o jogo
   const now = performance.now(); if (now - lastAtk < 50) return; lastAtk = now;
-  startFP('swing'); beep(220, .07); toast('Sem munição! Pegue itens no chão (E) — corpo a corpo');
+  startFP('swing'); if (!sfxWeaponLoaded()) beep(220, .07); toast('Sem munição! Pegue itens no chão (E) — corpo a corpo');
   setTimeout(() => {
     if (gameOver) return;
     const fx_ = -Math.sin(yaw), fz = -Math.cos(yaw);
@@ -3809,7 +3814,7 @@ function buildCeilings(MP) {
   });
   const inst = (mat, list) => { if (!list.length) return; const mm = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), mat, list.length), ob = new THREE.Object3D(); list.forEach((q, i) => { ob.position.set(q[0], q[1], q[2]); ob.scale.set(q[3], q[4], q[5]); ob.updateMatrix(); mm.setMatrixAt(i, ob.matrix); }); mm.frustumCulled = false; scene.add(mm); };
   const dark = std(0x1d1c1a, { roughness: .9 });
-  inst(dark, hous); inst(dark, rod); inst(dark, beam); inst(new THREE.MeshBasicMaterial({ color: 0xfff1cc }), tube);
+  inst(dark, hous); inst(dark, rod); inst(dark, beam); inst(pwMat(0xfff1cc), tube);
   const dm = std(0x9ca3af, { metalness: .6, roughness: .4 }), tr = std(0x374151);
   duct.forEach(q => box(q[2], .5, .6, dm, q[0], 4.5, q[1], false, false));
   truss.forEach(q => box(.3, .3, q[2], tr, q[0], 4.8, q[1], false, false));
@@ -4245,7 +4250,7 @@ function buildDecks() {
     if (d.own) {
       const o = d.o, w = d.x2 - d.x1, dd = d.z2 - d.z1, th = +o.h > 0 ? +o.h : .3, m = std(o.color || '#8b8f98', { roughness: .85 });
       const k = texKey(o.tex, 'piso_andar.jpg', 2.5); if (k) tx(k, m);
-      box(w, th, dd, m, o.x, d.top - th / 2, o.z, false, true);
+      box(w, th, dd, m, o.x, d.top - th / 2, o.z, false, o.shadow !== false);
     }
     if (!d.rail) return;
     const T = d.top, near = (cx, cz) => lad.some(L => Math.hypot(cx - L.x, cz - L.z) < 1.9);
@@ -4315,7 +4320,7 @@ function buildPontas() {
   });
   console.log('✓', pontas.length, 'palete(s) de ponta do mapa');
 }
-function buildExtras(){ buildLadder(); buildPontas(); buildRacks(); buildDecks(); buildPngs(); }   // escada + pontas + o resto vem do map.json
+function buildExtras(){ try { ensureAndar2(); } catch (e) { console.warn('ensureAndar2', e); } buildLadder(); buildPontas(); buildRacks(); buildDecks(); buildPngs(); }   // escada + pontas + o resto vem do map.json
 
 /* ---------- REALISMO ---------- */
 let lastStep=false;
@@ -4339,6 +4344,7 @@ function pickup(){
     if (d < best) { best = d; nearCar = car; }
   });
   if (nearCar) { enterCar(nearCar); return; }
+  if (powerNear()) { powerToggle(); return; }
 
   if(!nearLoot||nearLoot.taken||gameOver)return;
   if(zMode){zPickup(nearLoot);return;}
@@ -4403,15 +4409,15 @@ function flickLamp(x,y,z,c,b,pole,dist){
   const l=new THREE.PointLight(c,b,dist||(pole?34:20));l.position.set(x,y-.3,z);scene.add(l);
   const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:glowT,color:c,transparent:true,blending:THREE.AdditiveBlending,depthWrite:false,fog:false}));sp.position.set(x,y,z);sp.scale.set(pole?7:5,pole?7:5,1);sp.visible=QUAL.atmos;scene.add(sp);
   if(pole){const po=new THREE.Mesh(new THREE.CylinderGeometry(.1,.12,y,8),std(0x475569));po.position.set(x,y/2,z);po.castShadow=true;scene.add(po);colliders.push({x1:x-.3,x2:x+.3,z1:z-.3,z2:z+.3});}
-  flick.push({m,l,s:sp,b,c,next:0,on:true});
+  flick.push({m,l,s:sp,b,c,next:0,on:true,pole:!!pole});
 }
 function nightExtras(){
   const L=(MAPDATA||[]).filter(o=>o.t==='lamp'),num=(v,d)=>v!=null&&v!==''&&!isNaN(+v)?+v:d;
   L.forEach(o=>{if(!(+o.w>0&&+o.d>0))return;   // luminária visível (w × d no teto, altura sy)
-    const m=box(+o.w,.06,+o.d,new THREE.MeshBasicMaterial({color:0xe8f6ff}),o.x,num(o.sy,HC-.05),o.z,false,false);m.rotation.y=(o.rot||0)*Math.PI/180;});
+    const m=box(+o.w,.06,+o.d,pwMat(0xe8f6ff),o.x,num(o.sy,HC-.05),o.z,false,false);m.rotation.y=(o.rot||0)*Math.PI/180;});
   let teto=L.filter(o=>(o.kind||'teto')==='teto'&&o.light!==false);
   if(isTouch&&teto.length>4){const st=Math.ceil(teto.length/4);teto=teto.filter((_,i)=>i%st===0||o_shadow(teto[i]));}   // celular: menos luzes
-  teto.forEach(o=>{const l=new THREE.PointLight(o.color!=null?hexc(o.color):0xffdd9e,num(o.int,isTouch?1.3:1.1),num(o.dist,32));l.position.set(o.x,num(o.y,4),o.z);scene.add(l);
+  teto.forEach(o=>{const l=new THREE.PointLight(o.color!=null?hexc(o.color):0xffdd9e,num(o.int,isTouch?1.3:1.1),num(o.dist,32));l.position.set(o.x,num(o.y,4),o.z);scene.add(l);l.userData.pw=1;l.userData.pwI=l.intensity;
     if(!isTouch&&o.shadow)shadowLight(l,512,34);});   /* sombras reais (só uma luz, por causa do desempenho) */
   L.filter(o=>o.kind==='pisca'&&o.light!==false).forEach(o=>{flickLamp(o.x,num(o.y,4.7),o.z,o.color!=null?hexc(o.color):0xffda98,num(o.int,.9),0,o.dist!=null?+o.dist:0);
     if(!isTouch&&o.shadow)shadowLight(flick[flick.length-1].l,512,22);});
@@ -4646,6 +4652,7 @@ function animate() {
   perfGovernor(dt);
   timerUpdate();
   try { coldUpdate(dt, clock.elapsedTime); } catch (e) { if (!coldUpdate.err) { coldUpdate.err = 1; console.warn('coldUpdate', e); } }
+  try { powerTick(dt, clock.elapsedTime); } catch (e) { if (!powerTick.err) { powerTick.err = 1; console.warn('powerTick', e); } }
   if (typeof vfxRender === 'function') vfxRender(dt, clock.elapsedTime); else renderer.render(scene, camera);
 }
 </script>
@@ -4709,14 +4716,14 @@ function vfxLight() {
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); g.setIndex(idx);
     const m = new THREE.MeshBasicMaterial({ vertexColors: true, color: new THREE.Color(1, 1, 1).multiplyScalar(VFX_CFG.shafts), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false });
-    const mesh = new THREE.Mesh(g, m); mesh.frustumCulled = false; mesh.renderOrder = 3; scene.add(mesh);
+    const mesh = new THREE.Mesh(g, m); mesh.frustumCulled = false; mesh.renderOrder = 3; scene.add(mesh); (VFX.lightObjs = VFX.lightObjs || []).push(mesh);
   }
   if (VFX_CFG.pools > 0) {
     const pg = new THREE.PlaneGeometry(1, 1); pg.rotateX(-Math.PI / 2);
     const pm = new THREE.MeshBasicMaterial({ map: glowT, color: new THREE.Color(1, .86, .6).multiplyScalar(VFX_CFG.pools), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, polygonOffset: true, polygonOffsetFactor: -3 });
     const im = new THREE.InstancedMesh(pg, pm, lamps.length), d = new THREE.Object3D();
     lamps.forEach((L, i) => { d.position.set(L.x, .05, L.z); d.rotation.set(0, L.rot * Math.PI / 180, 0); d.scale.set(L.w + 3.4, 1, L.d + 2.8); d.updateMatrix(); im.setMatrixAt(i, d.matrix); });
-    im.frustumCulled = false; im.renderOrder = 2; scene.add(im);
+    im.frustumCulled = false; im.renderOrder = 2; scene.add(im); (VFX.lightObjs = VFX.lightObjs || []).push(im);
   }
   if (QUAL.atmos && glowT) {   // brilho (halo) das luminárias do editor; as do teto automático já têm o seu
     (MAPDATA || []).forEach(o => {
@@ -4841,6 +4848,189 @@ function vfxRender(dt, t) {
     } catch (e) { console.warn('Pós-processamento falhou, usando render simples:', e); VFX.comp = null; }
   }
   renderer.render(scene, camera);
+}
+
+/* ==========================================================================
+   SONS EM MP3 · passos e golpes (baguete, frigideira, garrafa, presunto, bazuca)
+   Coloque os arquivos na pasta  audio/  (a mesma da música e dos sons de dano):
+     audio/passos.mp3 · audio/baguete.mp3 · audio/frigideira.mp3 · audio/garrafa.mp3 · audio/presunto.mp3 · audio/bazuca.mp3
+     (opcional) audio/disjuntor.mp3 = som da alavanca
+   Sem o arquivo, o jogo usa os "bips" de antes. Os volumes podem ser ajustados em SFX_CFG.vol (1 = normal).
+   ========================================================================== */
+const SFX_CFG = {
+  pasta: 'audio/',
+  arquivos: { passos: 'passos.mp3', baguete: 'baguete.mp3', frigideira: 'frigideira.mp3', garrafa: 'garrafa.mp3', presunto: 'presunto.mp3', bazuca: 'bazuca.mp3', disjuntor: 'disjuntor.mp3' },
+  vol: { passos: .55, baguete: .9, frigideira: .9, garrafa: .9, presunto: .9, bazuca: 1, disjuntor: .9 }
+};
+const SFX = { ctx: null, buf: {}, started: false, loop: null, walkT: 0 };
+// qual som cada item faz ao bater (índice de ITEMS). Itens sem som próprio usam o da baguete.
+const SFX_ARMA = { 0: 'baguete', 1: 'frigideira', 2: 'garrafa', 3: 'baguete', 4: 'baguete', 5: 'baguete', 6: 'baguete', 7: 'garrafa', 8: 'baguete', 9: 'presunto', 10: 'baguete' };
+
+function sfxInit() {
+  if (SFX.started) { try { SFX.ctx && SFX.ctx.state === 'suspended' && SFX.ctx.resume(); } catch (e) {} return; }
+  SFX.started = true;
+  try { SFX.ctx = new (window.AudioContext || window.webkitAudioContext)(); SFX.ctx.resume && SFX.ctx.resume(); } catch (e) { console.warn('sfx: sem WebAudio', e); return; }
+  ['pointerdown', 'keydown', 'touchstart'].forEach(ev => addEventListener(ev, () => { try { if (SFX.ctx && SFX.ctx.state === 'suspended') SFX.ctx.resume(); } catch (e) {} }, { passive: true }));
+  Object.keys(SFX_CFG.arquivos).forEach(k => {
+    const url = SFX_CFG.pasta + SFX_CFG.arquivos[k];
+    fetch(url).then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.arrayBuffer(); })
+      .then(ab => new Promise((ok, no) => SFX.ctx.decodeAudioData(ab, ok, no)))
+      .then(b => { SFX.buf[k] = b; console.log('✓ som carregado:', url, b.duration.toFixed(2) + 's'); })
+      .catch(e => console.warn('✗ som não carregou (' + url + '):', e && e.message || e));
+  });
+  setInterval(() => { if (SFX.loop && performance.now() - SFX.walkT > 250) { try { SFX.loop.g.gain.setTargetAtTime(0, SFX.ctx.currentTime, .05); } catch (e) {} } }, 150);
+}
+function sfxPlay(name, vol, rate, pos) {   // pos = {x,z}: som de outro jogador (some com a distância)
+  const b = SFX.buf[name], c = SFX.ctx; if (!b || !c) return false;
+  let g = (SFX_CFG.vol[name] != null ? SFX_CFG.vol[name] : 1) * (vol == null ? 1 : vol);
+  if (pos) { const d = Math.hypot(pos.x - camera.position.x, pos.z - camera.position.z); g *= Math.max(0, 1 - Math.max(0, d - 3) / 27); if (g < .02) return true; }
+  const s = c.createBufferSource(), gn = c.createGain(); s.buffer = b; s.playbackRate.value = rate || 1; gn.gain.value = Math.min(1.5, g);
+  s.connect(gn); gn.connect(c.destination); s.start(); return true;
+}
+const sfxArma = w => (w == null ? null : (SFX_ARMA[w] || 'baguete'));
+function sfxWeaponLoaded() { const n = sfxArma(weapon); return !!(n && SFX.buf[n]); }
+function sfxSwing() { const n = sfxArma(weapon); if (n) sfxPlay(n, 1, .95 + Math.random() * .1); }                 // golpe com o item na mão
+function sfxFire() { sfxPlay('bazuca', 1, .97 + Math.random() * .06); }                                           // tiro de bazuca / canhão
+function sfxWalk(stepNow, l, grounded) {   // devolve true se o mp3 cuidou dos passos (senão o jogo usa o bip antigo)
+  const b = SFX.buf.passos; if (!b || !SFX.ctx) return false;
+  SFX.walkT = performance.now();
+  const moving = l > .1 && grounded, sp = Math.min(l, 1);
+  if (b.duration > 1.2) {   // arquivo longo (vários passos seguidos): toca em loop enquanto anda
+    if (moving && !SFX.loop) {
+      const s = SFX.ctx.createBufferSource(), gn = SFX.ctx.createGain(); s.buffer = b; s.loop = true; gn.gain.value = 0; s.connect(gn); gn.connect(SFX.ctx.destination); s.start(); SFX.loop = { s, g: gn };
+    }
+    if (SFX.loop) SFX.loop.g.gain.setTargetAtTime(moving ? SFX_CFG.vol.passos * (.6 + .4 * sp) : 0, SFX.ctx.currentTime, .05);
+    return true;
+  }
+  if (stepNow && grounded) sfxPlay('passos', (.75 + .25 * sp) * (.85 + Math.random() * .3), .92 + Math.random() * .16);   // 1 passo por toque, com leve variação
+  return true;
+}
+
+/* ==========================================================================
+   2º ANDAR · telhado do prédio ligado à escada
+   Se nenhum piso elevado estiver ao alcance da escada do mapa, o jogo cria um telhado andável sobre os tetos principais
+   (ou, se a escada não estiver encostada no prédio, um piso em volta dela). Para controlar você mesmo, ponha um objeto
+   {"t":"deck","x":..,"z":..,"w":..,"d":..,"top":..} perto da escada no map.json: aí este automático não é usado.
+   ========================================================================== */
+const ANDAR2_CFG = { auto: true, top: null, w: 16, d: 12 };   // top = altura do piso (null = telhado a H+0,3 m)
+function ensureAndar2() {
+  const M = MAPDATA || [], L = M.filter(o => o.t === 'ladder');
+  console.log('Andares → escadas: ' + L.length + ' · pisos elevados (deck): ' + M.filter(o => o.t === 'deck').length + ' · telhados andáveis: ' + M.filter(o => o.t === 'wall' && o.mat === 'roof' && o.walk !== false).length);
+  if (!L.length) { console.warn('Andares: não há escada (tipo "ladder") no map.json, então não dá para subir.'); return; }
+  const l0 = L[0], dist = (x1, x2, z1, z2) => Math.hypot(Math.max(x1 - l0.x, 0, l0.x - x2), Math.max(z1 - l0.z, 0, l0.z - z2));
+  if (!ANDAR2_CFG.auto || DECKS().some(d => dist(d.x1, d.x2, d.z1, d.z2) < 2.5)) return;   // já existe piso ao alcance da escada
+  let deck = null;
+  const C = M.filter(o => o.t === 'ceiling').map(o => { const w = +o.w || 10, d = +o.d || 10; return { x1: o.x - w / 2, x2: o.x + w / 2, z1: o.z - d / 2, z2: o.z + d / 2, a: w * d }; });
+  if (C.length) {
+    const amax = Math.max(...C.map(c => c.a)), B = C.filter(c => c.a >= amax * .25);
+    const x1 = Math.min(...B.map(c => c.x1)) - .25, x2 = Math.max(...B.map(c => c.x2)) + .25, z1 = Math.min(...B.map(c => c.z1)) - .25, z2 = Math.max(...B.map(c => c.z2)) + .25;
+    if (dist(x1, x2, z1, z2) < 2.5) deck = { t: 'deck', auto: true, x: (x1 + x2) / 2, z: (z1 + z2) / 2, w: x2 - x1, d: z2 - z1, top: ANDAR2_CFG.top != null ? ANDAR2_CFG.top : H + .3, h: .3, color: '#6f747d', tex: 'telhado.jpg', shadow: false };
+  }
+  if (!deck) deck = { t: 'deck', auto: true, x: +l0.x, z: +l0.z, w: ANDAR2_CFG.w, d: ANDAR2_CFG.d, top: ANDAR2_CFG.top != null ? ANDAR2_CFG.top : Math.min(3.2, Math.max(.5, (+l0.h || 5.2) - 1.7)), h: .3, color: '#8b8f98' };
+  MAPDATA.push(deck); _DECKS = null; _LADS = null;   // refaz as listas com o piso novo
+  console.warn('map.json sem piso elevado ao alcance da escada → criei um 2º andar automático: x ' + deck.x.toFixed(1) + ', z ' + deck.z.toFixed(1) + ', ' + deck.w.toFixed(0) + '×' + deck.d.toFixed(0) + ' m, altura ' + deck.top + ' m.');
+}
+
+/* ==========================================================================
+   ENERGIA · disjuntor com alavanca, apagão e lanterna
+   O mercado começa SEM energia. Ache o disjuntor (no fundo do estoque), chegue perto e aperte E (ou o botão) para ligar.
+   Lanterna: tecla L (ou botão 🔦). No online, o estado da energia é enviado aos outros jogadores (precisa do trecho no server.js).
+   Para pôr o disjuntor onde quiser: POWER_CFG.x / z / rot, ou adicione {"t":"power","x":..,"z":..,"rot":0} no map.json (rot 0 = olhando para +z).
+   ========================================================================== */
+const POWER_CFG = { startOff: true, x: null, z: null, rot: 0, dark: { hemi: .16, sun: .12 }, flashlight: true };
+
+function _pwTex(w, h, fn) { const c = document.createElement('canvas'); c.width = w; c.height = h; fn(c.getContext('2d'), w, h); const t = new THREE.CanvasTexture(c); t.anisotropy = 4; return t; }
+
+function powerBuild() {
+  PW.mats = PW.mats.filter(Boolean); PW.sprites = []; PW.lights = []; PW.hemi = null; PW.box = null; PW.seq = null;
+  scene.traverse(o => {
+    if (o.isPointLight && o.userData.pw) PW.lights.push(o);
+    else if (o.isSprite && o.material && glowT && o.material.map === glowT && !flick.some(f => f.s === o)) { o.userData.pwO = o.material.opacity; PW.sprites.push(o); }
+    else if (o.isHemisphereLight && !PW.hemi) { PW.hemi = o; PW.hemiI = o.intensity; }
+  });
+  PW.sunI = typeof sunLight !== 'undefined' && sunLight ? sunLight.intensity : 0;
+  try { powerBox(); } catch (e) { console.warn('disjuntor', e); }
+  try { powerFlash(); } catch (e) { console.warn('lanterna', e); }
+  PW.on = !POWER_CFG.startOff; PW.k = PW.on ? 1 : 0; powerApply(PW.k); powerLeverNow();
+  if (POWER_CFG.flashlight) PW.flOn = !PW.on;
+  if (!PW.on) setTimeout(() => { try { toast('🌑 Sem energia! Ache o disjuntor no fundo do estoque' + (isTouch ? ' (🔦 lanterna)' : ' · L = lanterna')); } catch (e) {} }, 2500);
+}
+
+function powerApply(k) {
+  PW.k = k; const D = POWER_CFG.dark;
+  PW.lights.forEach(l => { l.intensity = l.userData.pwI * k; });
+  PW.mats.forEach(m => { m.color.setHex(m.userData.pwC).multiplyScalar(.07 + .93 * k); });
+  PW.sprites.forEach(s => { s.material.opacity = s.userData.pwO * k; });
+  (VFX.lightObjs || []).forEach(o => { o.visible = k > .35; });
+  if (PW.hemi) PW.hemi.intensity = PW.hemiI * (D.hemi + (1 - D.hemi) * k);
+  if (typeof sunLight !== 'undefined' && sunLight) sunLight.intensity = PW.sunI * (D.sun + (1 - D.sun) * k);
+}
+
+function powerSet(on, local) {
+  if (!PW.box || (on === PW.on && !PW.seq)) return;
+  PW.on = on;
+  PW.seq = { t0: performance.now() / 1000, pts: on ? [[0, 0], [.08, 1], [.2, .05], [.32, 1], [.5, .25], [.62, 1]] : [[0, 1], [.07, 0], [.2, .7], [.28, 0]] };   // pisca antes de firmar
+  if (POWER_CFG.flashlight) PW.flOn = !on;
+  if (!sfxPlay('disjuntor', 1, 1)) { beep(90, .12, 'square'); setTimeout(() => beep(on ? 520 : 160, .1, 'square'), 90); }
+  try { toast(on ? '⚡ Energia restaurada!' : '🌑 A energia caiu!'); } catch (e) {}
+  if (local && typeof isSolo !== 'undefined' && !isSolo && socket && currentRoom) socket.emit('powerSwitch', { room: currentRoom, on });
+}
+function powerToggle() { powerSet(!PW.on, true); }
+
+function powerNear() {
+  if (!PW.box || typeof isDriving !== 'undefined' && isDriving || typeof gameOver !== 'undefined' && gameOver) return false;
+  return Math.hypot(camera.position.x - PW.box.x, camera.position.z - PW.box.z) < 2.3 && camera.position.y < 3.3;
+}
+
+function powerBox() {
+  const C = (MAPDATA || []).find(o => o.t === 'power' || o.t === 'disjuntor');
+  let x = C ? +C.x : POWER_CFG.x, z = C ? +C.z : POWER_CFG.z, rot = C ? (+C.rot || 0) : POWER_CFG.rot;
+  if (x == null || z == null || isNaN(x) || isNaN(z)) {   // automático: parede do fundo do mercado, a 80% da largura (lado direito)
+    const B = VFX.boxes || [];
+    if (B.length) { const U = { x1: Math.min(...B.map(b => b.x1)), x2: Math.max(...B.map(b => b.x2)), z1: Math.min(...B.map(b => b.z1)) }; x = U.x1 + (U.x2 - U.x1) * .8; z = U.z1 + .4; rot = 0; }
+    else { x = 0; z = -38; rot = 0; }
+  }
+  const g = new THREE.Group(); g.position.set(x, 0, z); g.rotation.y = rot * Math.PI / 180; scene.add(g);
+  const add = (geo, mat, px, py, pz) => { const m = new THREE.Mesh(geo, mat); m.position.set(px, py, pz); m.castShadow = true; m.receiveShadow = true; g.add(m); return m; };
+  add(new THREE.BoxGeometry(1.1, 1.7, .3), std(0x5b6370, { metalness: .5, roughness: .55 }), 0, 1.2, 0);
+  add(new THREE.BoxGeometry(1.0, 1.55, .04), std(0x8a93a0, { metalness: .4, roughness: .5 }), 0, 1.2, .17);
+  const lab = _pwTex(256, 80, (c, w, h) => { c.fillStyle = '#111'; c.fillRect(0, 0, w, h); c.fillStyle = '#facc15'; c.font = 'bold 40px Impact, Arial Black, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('⚡ DISJUNTOR', w / 2, h / 2 + 2); });
+  const lp = new THREE.Mesh(new THREE.PlaneGeometry(.9, .28), new THREE.MeshBasicMaterial({ map: lab })); lp.position.set(0, 1.78, .195); g.add(lp);
+  const haz = _pwTex(256, 40, (c, w, h) => { c.fillStyle = '#facc15'; c.fillRect(0, 0, w, h); c.fillStyle = '#111'; for (let i = -h; i < w; i += 36) { c.beginPath(); c.moveTo(i, h); c.lineTo(i + 18, h); c.lineTo(i + 18 + h, 0); c.lineTo(i + h, 0); c.fill(); } });
+  const hp = new THREE.Mesh(new THREE.PlaneGeometry(.9, .12), new THREE.MeshBasicMaterial({ map: haz })); hp.position.set(0, .62, .195); g.add(hp);
+  PW.ledMat = new THREE.MeshBasicMaterial({ color: 0xff2a2a }); add(new THREE.SphereGeometry(.05, 12, 8), PW.ledMat, .38, 1.5, .2);
+  add(new THREE.BoxGeometry(.3, .3, .04), std(0x20242b, { roughness: .7 }), 0, 1.05, .2);
+  PW.lever = new THREE.Group(); PW.lever.position.set(0, 1.05, .24); g.add(PW.lever);
+  const lm = std(0xe5e7eb, { metalness: .6, roughness: .35 }); const h1 = new THREE.Mesh(new THREE.BoxGeometry(.05, .4, .05), lm); h1.position.y = .18; PW.lever.add(h1);
+  const kn = new THREE.Mesh(new THREE.SphereGeometry(.07, 12, 10), std(0xdc2626, { roughness: .4 })); kn.position.y = .4; PW.lever.add(kn);
+  PW.em = new THREE.PointLight(0xff3b30, .9, 8); PW.em.position.set(0, 2.1, .7); g.add(PW.em);   // luz de emergência vermelha (ajuda a achar o disjuntor no escuro)
+  const q = Math.round(((rot % 360) + 360) % 360 / 90) % 2, hx = q ? .35 : .65, hz = q ? .65 : .35;
+  colliders.push({ x1: x - hx, x2: x + hx, z1: z - hz, z2: z + hz });
+  PW.box = { x, z, rot, g }; PW.leverA = 0;
+  console.log('✓ disjuntor em x ' + x.toFixed(1) + ', z ' + z.toFixed(1) + ' (rot ' + rot + ')');
+}
+function powerLeverNow() { if (PW.lever) { PW.leverA = PW.on ? .7 : -.7; PW.lever.rotation.z = PW.leverA; } if (PW.ledMat) PW.ledMat.color.setHex(PW.on ? 0x22ff66 : 0xff2a2a); }
+
+function powerFlash() {
+  const old = document.getElementById('flashBtn'); if (old) old.remove();
+  const sp = new THREE.SpotLight(0xfff0d4, 0, 30, Math.PI / 6.5, .5, 1.2); sp.position.set(.15, -.15, 0); camera.add(sp); sp.target.position.set(0, 0, -8); camera.add(sp.target); PW.fl = sp; PW.flOn = false;
+  const b = document.createElement('button'); b.id = 'flashBtn'; b.type = 'button'; b.textContent = '🔦'; b.title = 'Lanterna (L)';
+  b.style.cssText = 'position:absolute;top:68px;right:10px;width:48px;height:48px;border-radius:12px;border:2px solid #fff;background:rgba(0,0,0,.6);font-size:24px;z-index:35;cursor:pointer';
+  b.addEventListener('click', () => { PW.flOn = !PW.flOn; }); $('game').appendChild(b);
+}
+addEventListener('keydown', e => { if (e.code === 'KeyL' && typeof started !== 'undefined' && started && PW.fl && document.activeElement.tagName !== 'INPUT') PW.flOn = !PW.flOn; });
+
+function powerTick(dt, t) {
+  if (!PW.box) return;
+  if (PW.seq) {
+    const e = performance.now() / 1000 - PW.seq.t0, P = PW.seq.pts; let k = P[0][1]; for (const p of P) if (e >= p[0]) k = p[1];
+    if (e >= P[P.length - 1][0] + .05) { k = PW.on ? 1 : 0; PW.seq = null; }
+    if (k !== PW.k) powerApply(k);
+  }
+  const ta = PW.on ? .7 : -.7; PW.leverA += (ta - PW.leverA) * Math.min(1, dt * 12); if (PW.lever) PW.lever.rotation.z = PW.leverA;
+  if (PW.ledMat) PW.ledMat.color.setHex(PW.on ? 0x22ff66 : (Math.sin(t * 5) > 0 ? 0xff2a2a : 0x661010));
+  if (PW.em) { PW.em.color.setHex(PW.on ? 0x22ff66 : 0xff3b30); PW.em.intensity = PW.on ? .25 : .7 + .3 * Math.sin(t * 4); }
+  if (PW.fl) PW.fl.intensity += ((PW.flOn ? 2.4 : 0) - PW.fl.intensity) * Math.min(1, dt * 14);
 }
 </script>
 <script>
