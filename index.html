@@ -339,6 +339,26 @@
   .bar i { display: block; height: 100%; width: 0; background: linear-gradient(#fde047, #c9962b); }
   #bossBar { position: absolute; top: 50px; left: 50%; transform: translateX(-50%); width: min(72vw, 420px); display: none; z-index: 40; pointer-events: none; text-align: center; color: #fecaca; font-weight: 900; font-size: 13px; letter-spacing: 3px; text-shadow: 0 2px 4px #000; }
   #bossBar.show { display: block; } #bossBar .bar { height: 14px; border-color: #7f1d1d; } #bossBar .bar i { width: 100%; background: linear-gradient(#f87171, #b91c1c); }
+
+  /* =================== DEFESA DO MERCADO: sniper do telhado e kill-cam =================== */
+  #snipHud { position: absolute; top: 50px; left: 50%; transform: translateX(-50%); display: none; align-items: center; gap: 8px; padding: 6px 14px; z-index: 40; pointer-events: none; white-space: nowrap; max-width: 94vw;
+    background: rgba(20,12,4,.88); border: 1.5px solid var(--ouro1); border-radius: 20px; color: var(--creme); font-weight: 800; font-size: 12.5px; letter-spacing: .6px; }
+  #snipHud.show { display: flex; } #snipHud .arr { width: 20px; height: 20px; color: var(--ouro1); }
+  #snipHud.bad { border-color: #ef4444; color: #fecaca; } #snipHud.bad .arr { color: #f87171; }
+  #bossBar { top: 96px; } #pa { top: 132px; } #promoHud { top: 200px; }
+  #scopeOv { position: fixed; inset: 0; pointer-events: none; opacity: 0; z-index: 19; transition: opacity .15s;
+    background:
+      linear-gradient(rgba(0,0,0,.75), rgba(0,0,0,.75)) center / 1px 34% no-repeat,
+      linear-gradient(rgba(0,0,0,.75), rgba(0,0,0,.75)) center / 34% 1px no-repeat,
+      radial-gradient(circle at center, transparent 0 26%, rgba(0,0,0,.5) 33%, rgba(0,0,0,.93) 50%); }
+  #scopeOv.on { opacity: 1; }
+  #scopeBtn { position: absolute; bottom: 250px; right: 40px; width: 56px; height: 56px; border-radius: 50%; display: none; align-items: center; justify-content: center; z-index: 30; padding: 0; cursor: pointer;
+    background: radial-gradient(circle at 35% 25%, #4b5563, #1f2937 72%); color: #f6e7c1; border: 3px solid #0b1220; box-shadow: 0 5px 0 rgba(0,0,0,.45), 0 8px 14px rgba(0,0,0,.45); }
+  #scopeBtn svg { width: 30px; height: 30px; }
+  #kcBars::before, #kcBars::after { content: ''; position: fixed; left: 0; right: 0; height: 0; background: #000; z-index: 50; pointer-events: none; transition: height .25s ease-out; }
+  #kcBars::before { top: 0; } #kcBars::after { bottom: 0; } #kcBars.on::before, #kcBars.on::after { height: 12vh; }
+  #kcTag { position: fixed; top: 4vh; left: 50%; transform: translateX(-50%); z-index: 51; pointer-events: none; opacity: 0; font-weight: 900; font-size: 22px; letter-spacing: 8px; color: #fde047; text-shadow: 0 2px 0 #000, 0 0 12px rgba(239,68,68,.8); transition: opacity .2s; }
+  #kcTag.on { opacity: 1; }
 </style>
 </head>
 <body>
@@ -2073,11 +2093,11 @@ function bindInput(cv) {
   addEventListener('keyup', e => keys[e.code] = false);
   if (!isTouch) {
     cv.addEventListener('click', () => { if (!document.pointerLockElement) cv.requestPointerLock(); });
-    cv.addEventListener('mousedown', e => { if (!document.pointerLockElement) return; if (e.button === 2) throwItem(); else attack(); });
+    cv.addEventListener('mousedown', e => { if (!document.pointerLockElement) return; if (e.button === 2) { if (zMode && SNP.onRoof) snipeZoom(); else throwItem(); } else attack(); });
     cv.addEventListener('contextmenu', e => e.preventDefault());
     addEventListener('mousemove', e => {
       if (document.pointerLockElement !== cv || isDriving) return;
-      yaw -= e.movementX * .0022; pitch = Math.max(-1.3, Math.min(1.3, pitch - e.movementY * .0022));
+      yaw -= e.movementX * .0022 * lookMul(); pitch = Math.max(-1.3, Math.min(1.3, pitch - e.movementY * .0022 * lookMul()));
     });
     return;
   }
@@ -2095,7 +2115,7 @@ function bindInput(cv) {
     for (const t of e.changedTouches) {
       if (t.identifier === joyId) joy(t);
       else if (t.identifier === lookId) {
-        yaw -= (t.clientX - lx) * .005; pitch = Math.max(-1.3, Math.min(1.3, pitch - (t.clientY - ly) * .005)); lx = t.clientX; ly = t.clientY;
+        yaw -= (t.clientX - lx) * .005 * lookMul(); pitch = Math.max(-1.3, Math.min(1.3, pitch - (t.clientY - ly) * .005 * lookMul())); lx = t.clientX; ly = t.clientY;
       }
     }
   }, { passive: true });
@@ -2536,6 +2556,7 @@ function onlineHurt(h) {            // dano sofrido (vida vem do servidor)
   $('hurt').style.opacity = 1; setTimeout(() => $('hurt').style.opacity = 0, 200); shake = 1; playDamageSound();
 }
 function projImpact(p) {
+  if (p.kc) { try { kcImpact(p); } catch (e) {} }
   const pos = p.m.position, boom = EXPLOSIVE.includes(p.t);
   burst(pos.clone(), p.t === 2 ? 0x4ade80 : (p.t === 10 ? 0xf0a46d : (boom ? 0xfb923c : 0xffffff)), boom ? 40 : 16);
   if (p.t === 4) miniBaguettes(pos);
@@ -3287,7 +3308,7 @@ let zKeysBound = false;
 function zAlive() { let n = 0; for (const z of Z.list) if (!z.dead) n++; return n; }
 
 function zombieInit() {
-  zWorld(); Z.ammo = AMMO.map(() => ZCFG.startAmmo); Z.sel = 0; Z.waveT = ZCFG.waveEvery - ZCFG.firstDelay;
+  zWorld(); Z.ammo = AMMO.map(() => ZCFG.startAmmo); Z.sel = 0; Z.waveT = ZCFG.waveEvery - (zCoop() || !SNIPE_CFG.on ? ZCFG.firstDelay : SNIPE_CFG.prep);
   document.body.classList.add('zmode');
   spawnLoot();                                                   // itens no chão = munição
   equipPlayer(6); $('item').textContent = 'Bazuca — pegue itens para ter munição';
@@ -3383,6 +3404,7 @@ function bazookaOnly() {                      // só a bazuca (sem vassoura). Ei
 function zFire() {
   if (gameOver || !started || zDowned) return;
   const now = performance.now(); if (now < fireReady || fpAnim) return;
+  if (snipeFire(now)) return;
   if (Z.ammo[Z.sel] <= 0) {
     const nx = Z.ammo.findIndex(a => a > 0);
     if (nx < 0) { zMelee(); return; }
@@ -3391,13 +3413,14 @@ function zFire() {
   fireReady = now + ZCFG.fireCd; startFP('fire');
 }
 function zRelease() {                         // chamado no instante do disparo da animação
-  const i = Z.sel; if (Z.ammo[i] <= 0) return;
-  Z.ammo[i]--; const t = AMMO[i].t;
+  const i = Z.sel, snp = snipeOn(); if (snp) { if (SNP.ammo <= 0) return; SNP.ammo--; } else { if (Z.ammo[i] <= 0) return; Z.ammo[i]--; }
+  const t = AMMO[i].t;
   const dir = lookDir(), right = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
   const pos = camera.position.clone().addScaledVector(dir, .7).addScaledVector(right, .25); pos.y -= .12;
   const m = makeItem(t); m.position.copy(pos); scene.add(m);
   projs.push({ m, t, remote: false, life: 3, dmg: ITEMS[t].d + ZCFG.projBonus, g: 3, v: dir.clone().multiplyScalar(36),
     spin: new THREE.Vector3((Math.random() - .5) * 10, (Math.random() - .5) * 6, 12 + Math.random() * 6) });
+  if (snp) { try { snipeShot(projs[projs.length - 1]); } catch (e) { console.warn('snipeShot', e); } }
   if (zCoop() && socket) socket.emit('zShot', { room: currentRoom, t, x: pos.x, y: pos.y, z: pos.z, dx: dir.x, dy: dir.y, dz: dir.z });   // os outros veem o tiro
   fpKick = -.07; shake = Math.max(shake, .3); beep(150, .12, 'sawtooth');
   burst(pos.clone().addScaledVector(dir, .4), 0xfbbf24, 8);
@@ -3729,7 +3752,7 @@ function zUpdate(dt, t) {
         z.atk += dt;
         if (z.atk > .3 && !z.atkHit) {
           z.atkHit = true;
-          if (tg && Math.hypot(tg.x - p.x, tg.z - p.z) < (z.range || ZCFG.range) + .5) {
+          if (tg && !(tg.id === myId && SNP.onRoof) && Math.hypot(tg.x - p.x, tg.z - p.z) < (z.range || ZCFG.range) + .5) {
             if (zCoop()) { if (socket) socket.emit('zAttack', { room: currentRoom, id: z.id, target: tg.id }); }   // o servidor confere e aplica o dano
             else hurt((z.dmg || ZCFG.dmg) * (z.crawl ? ZCFG.crawlDmgMul : 1));
           }
@@ -4891,7 +4914,7 @@ function perfGovernor(dt) {
 }
 function animate() {
   requestAnimationFrame(animate);
-  const dt = Math.min(clock.getDelta(), .05);
+  const dtReal = Math.min(clock.getDelta(), .05), dt = dtReal * (typeof KC !== 'undefined' && KC.on ? KC.ts : 1);   // câmera lenta do kill-cam
   if (!gameOver) update(dt, clock.elapsedTime);
   if (zMode) zUpdate(dt, clock.elapsedTime);
   fxUpdate(dt, clock.elapsedTime);
@@ -4900,7 +4923,7 @@ function animate() {
   perfGovernor(dt);
   timerUpdate();
   try { coldUpdate(dt, clock.elapsedTime); } catch (e) { if (!coldUpdate.err) { coldUpdate.err = 1; console.warn('coldUpdate', e); } }
-  try { powerTick(dt, clock.elapsedTime); evtTick(dt, clock.elapsedTime); } catch (e) { if (!powerTick.err) { powerTick.err = 1; console.warn('powerTick/evtTick', e); } }
+  try { powerTick(dt, clock.elapsedTime); evtTick(dt, clock.elapsedTime); kcTick(dtReal); } catch (e) { if (!powerTick.err) { powerTick.err = 1; console.warn('powerTick/evtTick', e); } }
   if (typeof vfxRender === 'function') vfxRender(dt, clock.elapsedTime); else renderer.render(scene, camera);
 }
 </script>
@@ -5092,10 +5115,12 @@ function vfxRender(dt, t) {
       if (innerWidth !== VFX.w || innerHeight !== VFX.h || pr !== VFX.pr) {
         VFX.w = innerWidth; VFX.h = innerHeight; VFX.pr = pr; VFX.comp.setPixelRatio(pr); VFX.comp.setSize(innerWidth, innerHeight); VFX.grade.uniforms.res.value.set(innerWidth * pr, innerHeight * pr);
       }
-      VFX.grade.uniforms.time.value = t; VFX.comp.render(dt); return;
+      VFX.grade.uniforms.time.value = t;
+      const _kc = (typeof KC !== 'undefined' && KC.on) ? KC.cam : camera; if (VFX.comp.passes[0].camera !== _kc) VFX.comp.passes[0].camera = _kc;
+      VFX.comp.render(dt); return;
     } catch (e) { console.warn('Pós-processamento falhou, usando render simples:', e); VFX.comp = null; }
   }
-  renderer.render(scene, camera);
+  renderer.render(scene, (typeof KC !== 'undefined' && KC.on) ? KC.cam : camera);
 }
 
 /* ==========================================================================
@@ -5439,7 +5464,7 @@ function bossDead(z) {
 
 /* ---------- CALENDÁRIO E RELÓGIO ---------- */
 function evtBuild() {
-  ['hitmark', 'pa', 'promoHud', 'chanBar', 'bossBar'].forEach(id => { const o = document.getElementById(id); if (o) o.remove(); });
+  ['hitmark', 'pa', 'promoHud', 'chanBar', 'bossBar', 'snipHud', 'scopeBtn', 'scopeOv', 'kcBars', 'kcTag'].forEach(id => { const o = document.getElementById(id); if (o) o.remove(); });
   const g = $('game'), mk = (id, html) => { const e = document.createElement('div'); e.id = id; if (html) e.innerHTML = html; g.appendChild(e); return e; };
   EVT.ui = {
     mark: mk('hitmark', '<svg viewBox="0 0 40 40"><path d="M7 7l9 9M33 7l-9 9M7 33l9-9M33 33l-9-9" stroke="currentColor" stroke-width="3.4" stroke-linecap="round"/></svg>'),
@@ -5453,10 +5478,12 @@ function evtBuild() {
   if (!zMode && C.curto.on) for (let t = rr(...C.curto.first); t < 2400; t += rr(...C.curto.every)) EVT.q.push({ t, type: 'curto', seed: Math.floor(R() * 1e9) });
   if (!zMode && C.roof.on) { EVT.q.push({ t: C.roof.first, type: 'roof', seed: Math.floor(R() * 1e9) }); for (let t = 140; t < 2400; t += rr(...C.roof.every)) EVT.q.push({ t, type: 'roof', seed: Math.floor(R() * 1e9) }); }
   EVT.q.sort((a, b) => a.t - b.t);
+  try { snipeBuild(); } catch (e) { console.warn('snipeBuild', e); }
 }
 function evtTick(dt, t) {
   if (!EVT.on || !started || gameOver) return;
   const now = (performance.now() - EVT.t0) / 1000;
+  try { snipeTick(dt, t); } catch (e) { if (!snipeTick.err) { snipeTick.err = 1; console.warn('snipeTick', e); } }
   while (EVT.q.length && EVT.q[0].t <= now) { const ev = EVT.q.shift(); try { if (ev.type === 'promo') evtPromo(ev); else if (ev.type === 'curto') evtCurto(ev); else if (ev.type === 'roof') evtRoof(ev); } catch (e) { console.warn('evento', ev.type, e); } }
   if (PROMO.on) {
     const left = Math.ceil(PROMO.end - now), hud = EVT.ui.promo; if (left <= 0 || !PROMO.items.some(l => !l.taken)) promoEnd();
@@ -5470,6 +5497,140 @@ function evtTick(dt, t) {
   chanTick();
   const bb = EVT.ui.boss; if (bb) { const z = BOSS.z; if (z && !z.dead) { bb.className = 'show'; bb.lastChild.firstChild.style.width = Math.max(0, z.hp / z.maxHp * 100) + '%'; } else bb.className = ''; }
   EVT.roofItems.forEach(l => { if (!l.taken) l.beam.material.opacity = .24 + Math.sin(t * 3) * .08; });
+}
+
+/* ==========================================================================
+   DEFESA DO MERCADO (modo zumbi) · telhado = posição de atirador + câmera do projétil (kill-cam)
+   - Solo: você tem SNIPE_CFG.prep segundos até a 1ª onda para subir ao telhado (escada nos fundos do estoque).
+   - No telhado a bazuca vira sniper: luneta (V / botão / botão direito), tiro rápido e forte, munição que recarrega sozinha.
+   - Se mais de SNIPE_CFG.invade zumbis entrarem no mercado, o sniper trava: desça e enfrente-os (volta quando sobrarem SNIPE_CFG.release).
+   - Kill-cam: só quando o tiro previsto MATA com um único tiro (hit kill), e não em todos (tempo de espera + sorteio).
+   ========================================================================== */
+const SNIPE_CFG = { on: true, prep: 40, invade: 20, release: 10, dmgMul: 3.4, speed: 70, g: .6, fireCd: 800, ammoMax: 10, regen: 2.5, zoom: .4, look: .4,
+  camCooldown: 10, camChance: .4 };   // camChance: chance base da câmera (x1.6 em tiros longos, x0.45 em perto); o 1º hit kill no telhado sempre mostra a câmera
+const SNP = { onRoof: false, ammo: 10, zoom: false, locked: false, inside: 0, reached: false, t0: 0, regenT: 0, last: 0, chk: 0, ladder: null, ui: {} };
+const KC = { on: false, ts: 1, cam: null, p: null, z: null, phase: '', t: 0, t0h: 0, hp: null, last: 0, count: 0, fp: null, w: 0, h: 0 };
+const lookMul = () => (SNP.onRoof && SNP.zoom ? SNIPE_CFG.look : 1);
+const snipeOn = () => zMode && SNIPE_CFG.on && SNP.onRoof && !SNP.locked && !gameOver;
+
+function snipeBuild() {
+  KC.on = false; KC.ts = 1; KC.p = KC.z = null; KC.count = 0; KC.last = 0;
+  Object.assign(SNP, { onRoof: false, ammo: SNIPE_CFG.ammoMax, zoom: false, locked: false, inside: 0, reached: false, t0: performance.now(), regenT: 0, last: performance.now(), chk: 0 });
+  const L = (MAPDATA || []).find(o => o.t === 'ladder'); SNP.ladder = L ? { x: +L.x, z: +L.z } : null;
+  if (!zMode || !SNIPE_CFG.on) return;
+  const g = $('game'), mk = (id, html) => { const e = document.createElement('div'); e.id = id; if (html) e.innerHTML = html; g.appendChild(e); return e; };
+  SNP.ui = {
+    hud: mk('snipHud', '<svg class="arr" viewBox="0 0 24 24"><path d="M12 3l7 14-7-4-7 4z" fill="currentColor"/></svg><span></span>'),
+    ov: mk('scopeOv'), bars: mk('kcBars'), tag: mk('kcTag', 'HIT KILL'),
+    btn: mk('scopeBtn', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="7.5"/><path d="M12 2v5M12 17v5M2 12h5M17 12h5"/></svg>')
+  };
+  SNP.ui.btn.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); snipeZoom(); });
+  SNP.ui.btn.addEventListener('touchstart', e => e.stopPropagation(), { passive: true });
+  announce('rare', 'DEFESA DO MERCADO!', zCoop() ? 'Suba ao telhado (escada nos fundos do estoque) e use a bazuca como sniper' : 'Suba ao telhado em ' + SNIPE_CFG.prep + ' s (escada nos fundos do estoque) — os zumbis vêm do estacionamento', 'Atenção! Todos ao telhado! Defendam o mercado!');
+}
+function snipeZoom() {
+  if (!SNP.onRoof || KC.on) return;
+  if (SNP.locked) { toast('Sinal bloqueado — desça e enfrente os zumbis'); return; }
+  SNP.zoom = !SNP.zoom; beep(SNP.zoom ? 900 : 600, .04, 'sine');
+}
+addEventListener('keydown', e => { if (e.code === 'KeyV' && started && zMode) snipeZoom(); });
+
+/* chamado em zFire: true = o sniper cuidou do disparo (ou bloqueou) */
+function snipeFire(now) {
+  if (!zMode || !SNIPE_CFG.on || !SNP.onRoof) return false;
+  if (SNP.locked) { toast('Sinal bloqueado! O mercado foi invadido — desça e enfrente os zumbis'); beep(140, .1, 'sawtooth'); return true; }
+  if (SNP.ammo <= 0) { toast('Recarregando…'); beep(160, .06, 'square'); return true; }
+  fireReady = now + SNIPE_CFG.fireCd; startFP('fire'); return true;
+}
+/* chamado em zRelease logo depois de criar o projétil */
+function snipeShot(P) {
+  P.dmg *= SNIPE_CFG.dmgMul; P.v.setLength(SNIPE_CFG.speed); P.g = SNIPE_CFG.g; P.fixed = true; P.sniper = true; P.life = 4;
+  const pred = kcPredict(P); if (!pred || pred.z.boss || pred.z.hp > P.dmg) return;   // só se for hit kill
+  if (kcDecide(pred)) kcStart(P, pred);
+}
+function kcPredict(P) {
+  const pos = P.m.position.clone(), v = P.v.clone(), step = 1 / 90; let t = 0;
+  while (t < P.life) {
+    v.y -= P.g * step; pos.addScaledVector(v, step); t += step;
+    if (pos.y <= .12 || (pos.y < 2.6 && hit(pos.x, pos.z, .1))) return null;
+    for (const z of Z.list) {
+      if (z.dead) continue;
+      if (Math.hypot(z.pos.x + (z.vx || 0) * t - pos.x, z.pos.z + (z.vz || 0) * t - pos.z) < .95 && pos.y > .05 && pos.y < 2.1) return { z, t };
+    }
+  }
+  return null;
+}
+function kcDecide(pred) {
+  if (KC.on) return false;
+  if (KC.count === 0) return true;
+  if (performance.now() - KC.last < SNIPE_CFG.camCooldown * 1000) return false;
+  const d = Math.hypot(pred.z.pos.x - camera.position.x, pred.z.pos.z - camera.position.z);
+  return Math.random() < SNIPE_CFG.camChance * (d > 25 ? 1.6 : d > 14 ? 1 : .45);
+}
+function kcStart(P, pred) {
+  if (!KC.cam) KC.cam = new THREE.PerspectiveCamera(58, innerWidth / innerHeight, .1, 1500);
+  KC.on = true; KC.p = P; KC.z = pred.z; KC.phase = 'fly'; KC.t = 0; KC.ts = .3; KC.count++; KC.last = performance.now(); P.kc = true; P.done = false;
+  KC.cam.position.copy(camera.position); KC.cam.quaternion.copy(camera.quaternion);
+  KC.fp = [fpPivot ? fpPivot.visible : true, held ? held.visible : true]; if (fpPivot) fpPivot.visible = false; if (held) held.visible = false;
+  if (SNP.ui.bars) SNP.ui.bars.className = 'on'; if (SNP.ui.tag) SNP.ui.tag.className = 'on';
+}
+function kcImpact(P) { if (KC.on && KC.p === P) { P.done = true; KC.hp = P.m.position.clone(); } }
+function kcEnd() {
+  KC.on = false; if (SNP.ui.bars) SNP.ui.bars.className = ''; if (SNP.ui.tag) SNP.ui.tag.className = '';
+  if (fpPivot && KC.fp) fpPivot.visible = KC.fp[0]; if (held && KC.fp) held.visible = KC.fp[1];
+  shake = Math.max(shake, .5);
+}
+function kcTick(dt) {      // dt REAL (a câmera lenta só afeta o mundo)
+  if (!KC.on) { if (KC.ts < 1) KC.ts = Math.min(1, KC.ts + dt * 4); return; }
+  if (gameOver) { kcEnd(); KC.ts = 1; return; }
+  KC.t += dt; const P = KC.p, cam = KC.cam;
+  if (innerWidth !== KC.w || innerHeight !== KC.h) { KC.w = innerWidth; KC.h = innerHeight; cam.aspect = KC.w / KC.h; cam.updateProjectionMatrix(); }
+  if (KC.phase === 'fly') {
+    const pos = P.m.position, dir = P.v.clone().normalize(), want = pos.clone().addScaledVector(dir, -3.6); want.y += .9; want.addScaledVector(new THREE.Vector3(-dir.z, 0, dir.x), .8);
+    cam.position.lerp(want, Math.min(1, dt * 9));
+    const tz = KC.z && !KC.z.dead ? new THREE.Vector3(KC.z.pos.x, 1.2, KC.z.pos.z) : pos, near = Math.min(1, Math.max(0, 1 - pos.distanceTo(tz) / 14));
+    cam.lookAt(pos.clone().lerp(tz, near * .6));
+    if (P.done) { KC.phase = 'hold'; KC.t0h = KC.t; KC.ts = .12; }
+    else if (KC.t > 3.2) { kcEnd(); }
+  } else {
+    const c = KC.hp || cam.position, a = (KC.t - KC.t0h) * 1.2, holdT = KC.z && KC.z.dead ? .9 : .35;
+    cam.position.set(c.x + Math.cos(a) * 5.2, Math.max(1.6, c.y + 1.8), c.z + Math.sin(a) * 5.2); cam.lookAt(c.x, Math.max(.8, c.y), c.z);
+    if (KC.t - KC.t0h > holdT) kcEnd();
+  }
+}
+
+/* ---------- relógio da defesa: telhado, luneta, munição, invasão, HUD ---------- */
+function snipeTick(dt, t) {
+  if (!zMode || !SNIPE_CFG.on || !SNP.ui.hud) return;
+  const now = performance.now(), rd = Math.min(.05, (now - SNP.last) / 1000); SNP.last = now;
+  for (const z of Z.list) { if (z._px !== undefined && dt > 0) { z.vx = (z.pos.x - z._px) / dt; z.vz = (z.pos.z - z._pz) / dt; } z._px = z.pos.x; z._pz = z.pos.z; }   // velocidade p/ prever o tiro
+  const roof = playerUp && camera.position.y > 5.5;
+  if (roof !== SNP.onRoof) {
+    SNP.onRoof = roof; if (!roof) SNP.zoom = false;
+    if (roof && !SNP.reached) { SNP.reached = true; toast(SNP.locked ? 'No telhado — mas o mercado está invadido!' : 'Posição de atirador! V / botão direito = luneta'); beep(700, .08, 'sine'); }
+    SNP.ui.btn.style.display = roof && isTouch ? 'flex' : 'none';
+  }
+  const want = SNP.onRoof && SNP.zoom ? 75 * SNIPE_CFG.zoom : 75;
+  if (Math.abs(camera.fov - want) > .05) { camera.fov += (want - camera.fov) * Math.min(1, rd * 12); camera.updateProjectionMatrix(); }
+  SNP.ui.ov.className = SNP.onRoof && SNP.zoom && !KC.on ? 'on' : '';
+  if (SNP.onRoof) { SNP.regenT += rd; if (SNP.regenT >= SNIPE_CFG.regen && SNP.ammo < SNIPE_CFG.ammoMax) { SNP.ammo++; SNP.regenT = 0; } }
+  SNP.chk += rd;
+  if (SNP.chk >= .25) {
+    SNP.chk = 0; let n = 0; for (const z of Z.list) if (!z.dead && zInside(z.pos.x, z.pos.z)) n++; SNP.inside = n;
+    if (!SNP.locked && n > SNIPE_CFG.invade) { SNP.locked = true; SNP.zoom = false; announce('curto', 'MERCADO INVADIDO!', n + ' zumbis lá dentro — desça e enfrente-os!', 'Atenção! O mercado foi invadido!'); }
+    else if (SNP.locked && n <= SNIPE_CFG.release) { SNP.locked = false; announce('rare', 'MERCADO RETOMADO!', 'Pode voltar ao telhado e atirar', 'Mercado retomado.'); }
+  }
+  // HUD
+  const hud = SNP.ui.hud, arr = hud.firstChild, txt = hud.lastChild, left = Math.ceil(SNIPE_CFG.prep - (now - SNP.t0) / 1000);
+  let msg, cls = '', target = null;
+  if (SNP.locked) { msg = 'MERCADO INVADIDO · ' + SNP.inside + ' dentro · DESÇA E ENFRENTE-OS'; cls = ' bad'; if (SNP.onRoof && SNP.ladder) target = SNP.ladder; }
+  else if (SNP.onRoof) msg = 'ATIRADOR · munição ' + SNP.ammo + '/' + SNIPE_CFG.ammoMax + ' · dentro do mercado ' + SNP.inside + '/' + SNIPE_CFG.invade;
+  else if (!SNP.reached) { msg = (!zCoop() && left > 0 ? 'SUBA AO TELHADO · ' + left + ' s' : 'SUBA AO TELHADO'); target = SNP.ladder; }
+  else msg = 'Dentro do mercado ' + SNP.inside + '/' + SNIPE_CFG.invade + (SNP.locked ? '' : ' · sniper no telhado');
+  hud.className = 'show' + cls; txt.textContent = msg;
+  if (target) { const dx = target.x - camera.position.x, dz = target.z - camera.position.z, d = Math.hypot(dx, dz) || 1, fx = -Math.sin(yaw), fz = -Math.cos(yaw), rx = Math.cos(yaw), rz = -Math.sin(yaw);
+    arr.style.display = 'block'; arr.style.transform = 'rotate(' + (Math.atan2((dx * rx + dz * rz) / d, (dx * fx + dz * fz) / d) * 180 / Math.PI) + 'deg)'; txt.textContent += ' · ' + Math.round(d) + ' m'; }
+  else arr.style.display = 'none';
 }
 </script>
 <script>
