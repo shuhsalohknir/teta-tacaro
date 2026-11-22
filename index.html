@@ -2186,6 +2186,7 @@ function hamPanItem(){           // Canhão de Presunto: frigideira com o presun
   const bb=new THREE.Box3().setFromObject(pn);hm.scale.setScalar(.5);hm.position.set(.06,bb.max.y-.15,0);hm.rotation.z=Math.PI/2;g.add(hm);return g;
 }
 function makeItem(i){
+  if(typeof COMBO_BUILD!=='undefined'&&COMBO_BUILD[i]){try{return COMBO_BUILD[i]();}catch(e){console.warn('combo model',i,e);}}
   if(i===5)return spearItem();if(i===6)return zMode?bazookaOnly():bazookaItem();if(i===10)return hamPanItem();
   if(ITEMS[i].p){const w=new THREE.Group();ITEMS[i].p.forEach((q,k)=>{const c=makeItem(q);c.scale.setScalar(.85);c.position.x=k?.1:-.1;w.add(c);});return w;}
   const itemModels = { 0: 'bread', 1: 'pan', 2: 'bottle', 3: 'broom', 9: 'ham' };   // Baguete, Frigideira, Garrafa, Vassoura
@@ -2227,7 +2228,7 @@ const KEEP_WEAPONS = [6, 10];     // Bazuca e Canhão de Presunto: ficam na mão
 let fireReady = 0;
 const NO_THROW = [3];              // índices de ITEMS que NÃO podem ser arremessados (3 = Vassoura)
 const EXPLOSIVE = [4, 6, 7, 8];       // explodem em área ao acertar (Coquetel, Bomba, Arma Suprema)
-let fpArms = null, fpAnim = null, fpRoll = 0, fpKick = 0, projs = [];
+let fpArms = null, fpAnim = null, fpRoll = 0, fpKick = 0, projs = [], fpHitMs = 40;
 let fpItem = null, fpItemT = 1, fpTwoW = 0, fpLean = 0;
 let fpR = null, fpL = null, fpPivot = null, fpCurName = '', fpLock = false, fpSide = 1;
 let fpClip = null, fpTime = 0, fpSpeed = 1, fpLoop = true, fpDone = false, fpBlend = 1, fpBlendDur = .15, fpPrev = null;
@@ -2238,14 +2239,15 @@ const FP_CFG = {
   colors: { sleeve: 0x34425c, cuff: 0x232c3e, skin: 0xe0aa86 },
   textures: { sleeve: 'textures/fp_sleeve.jpg', cuff: 'textures/fp_cuff.jpg', hand: 'textures/fp_hand.jpg' },
   texRepeat: { sleeve: [3, 2], cuff: [4, 1], hand: [1, 1] },      // quantas vezes a foto se repete na peça
-  itemLen: { def: .3, 0: .42, 1: .36, 2: .25, 3: .68, 4: .34, 5: .72, 6: .6, 7: .3, 8: .55, 9: .2, 10: .42 },   // comprimento (m) do item na mão
+  itemLen: { def: .3, 0: .42, 1: .36, 2: .25, 3: .68, 4: .38, 5: .72, 6: .6, 7: .34, 8: .85, 9: .2, 10: .42 },   // comprimento (m) do item na mão
   gripFrac: { 2: .14, 3: .08 },      // garrafa / vassoura: a mão segura a ponta fina (gargalo / cabo)
   itemLean: 35,                      // inclinação do item no punho (graus para frente)
-  itemLeanBy: { 3: 52, 5: 62, 6: 82, 8: 70, 10: 78 },   // itens grandes: vassoura, lança, bazuca, arma suprema, canhão (90 = horizontal)
+  itemLeanBy: { 3: 52, 5: 62, 6: 82, 8: 58, 10: 78 },   // itens grandes: vassoura, lança, bazuca, arma suprema, canhão (90 = horizontal)
   gripCurl: .72,                     // quanto os dedos fecham em volta do item (0 aberto … 1 punho)
   twoHand: [3, 5, 6, 8, 10],         // itens segurados com as DUAS mãos (a esquerda acompanha o item)
   twoHandAt: .38,                    // onde a mão esquerda segura (fração do comprimento a partir da mão direita)
-  walkSpeed: 1.9, punchSpeed: 2.8, swingSpeed: 3.2, throwSpeed: 1.7, fireSpeed: 1.0
+  walkSpeed: 1.9, punchSpeed: 2.8, swingSpeed: 3.2, throwSpeed: 1.7, fireSpeed: 1.0,
+  comboWindow: .6                    // só dá para iniciar o próximo golpe depois desta fração do anterior (0 = sem limite)
 };
 
 /* ---------- animações: poses [x, y, z, giro, sobe/desce, rolagem, dedos] por braço ---------- */
@@ -2280,14 +2282,15 @@ const FPA = (() => {
                  [[0, GL], [.22, add(GL, 0, -.05, -.02, 0, -6, 0, 0)], [.70, HL]]);
   C.Equip = k(.55, [[0, P(.23, -.50, .02, 6, -20, 0, .6)], [.30, add(GR, 0, .02, -.02, 0, 4, 0, 0)], [.55, GR]],
                    [[0, P(-.23, -.50, .02, -6, -20, 0, .6)], [.30, add(GL, 0, .02, -.02, 0, 4, 0, 0)], [.55, GL]]);
-  return { clips: C, GR, GL };
+  return { clips: C, GR, GL, HR, HL, P, add, mir };
 })();
+const FP_EASE = { io: u => u * u * (3 - 2 * u), in: u => u * u * u, out: u => 1 - Math.pow(1 - u, 3), lin: u => u, back: u => { const c = 2.70158; return 1 + c * Math.pow(u - 1, 3) + 1.70158 * Math.pow(u - 1, 2); } };
 function fpTrack(keys, t) {
   const n = keys.length;
   if (t <= keys[0][0]) return keys[0][1].slice();
   if (t >= keys[n - 1][0]) return keys[n - 1][1].slice();
   let j = 0; while (j < n - 2 && t >= keys[j + 1][0]) j++;
-  const a = keys[j], b = keys[j + 1]; let u = (t - a[0]) / (b[0] - a[0]); u = u * u * (3 - 2 * u);
+  const a = keys[j], b = keys[j + 1]; let u = (t - a[0]) / (b[0] - a[0]); const ez = b[2]; u = (ez && FP_EASE[ez]) ? FP_EASE[ez](u) : u * u * (3 - 2 * u);
   return a[1].map((v, i) => v + (b[1][i] - v) * u);
 }
 function fpEval(c, t) { return c.fn ? c.fn(t) : [fpTrack(c.R, t), fpTrack(c.L, t)]; }
@@ -2425,20 +2428,20 @@ function fpItemAnim(dt, t) {
   const sway = Math.sin(t * (1.6 + 3 * mv)) * (.015 + .02 * mv);   // balanço leve; o golpe / arremesso / coice vêm do braço
   const tl = FP_CFG.itemLeanBy[weapon] !== undefined ? FP_CFG.itemLeanBy[weapon] : FP_CFG.itemLean;
   fpLean += (-(tl - FP_CFG.itemLean) * Math.PI / 180 - fpLean) * Math.min(1, dt * 10);        // deita o item grande para frente
-  fpItem.rotation.set(sway * .6 + fpLean, spin, sway);
+  fpItem.rotation.set(sway * .6 + fpLean + fpIn.wx, spin, sway + fpIn.wz);
 }
 function startFP(kind) {
   const armed = weapon !== null && weapon !== undefined;
   const has = n => !!(fpArms && fpArms.userData.clips && fpArms.userData.clips[n]);
-  let clip = 'Punch_R', speed = FP_CFG.punchSpeed, dur = .28, rel = 0;
+  let clip = 'Punch_R', speed = FP_CFG.punchSpeed, dur = .28, rel = 0, hitAt = .15, swv = null;
   if (kind === 'swing') {
-    if (armed) { clip = has('Swing') ? 'Swing' : 'Punch_R'; speed = FP_CFG.swingSpeed; }     // com item: golpe de cima para baixo
+    if (armed) { const sw = (typeof fpSwingSetup === 'function') ? fpSwingSetup() : null; if (sw) { clip = 'SwingX'; speed = 1; dur = sw.dur; hitAt = sw.hit; swv = sw.v; } else { clip = has('Swing') ? 'Swing' : 'Punch_R'; speed = FP_CFG.swingSpeed; } }     // com item: golpe de cima para baixo
     else { fpSide ^= 1; clip = fpSide ? 'Punch_L' : 'Punch_R'; }                                // sem item: um soco de cada vez
   }
   else if (kind === 'throw') { clip = has('Throw') ? 'Throw' : 'Punch_R'; speed = FP_CFG.throwSpeed; dur = .55; rel = .18; }
   else if (kind === 'fire') { clip = has('Fire') ? 'Fire' : 'Punch_R'; speed = FP_CFG.fireSpeed; dur = .4; rel = .05; }
   else if (kind === 'jab') { clip = 'Punch_L'; }
-  fpAnim = { kind, t: 0, dur, rel, done: false, released: false };
+  fpAnim = { kind, t: 0, dur, rel, hitAt, v: swv, done: false, released: false };
   fpPlay(clip, false, speed, .06);
 }
 
@@ -2459,6 +2462,7 @@ function updateFP(dt, t) {
     const pr = fpEval(fpClip, tt), R = pr[0], L = pr[1];
     let k = 1; if (fpBlend < 1) { fpBlend = Math.min(1, fpBlend + dt / Math.max(.001, fpBlendDur)); k = fpBlend * fpBlend * (3 - 2 * fpBlend); }
     for (let i = 0; i < 7; i++) { fpPose.R[i] = fpPrev.R[i] + (R[i] - fpPrev.R[i]) * k; fpPose.L[i] = fpPrev.L[i] + (L[i] - fpPrev.L[i]) * k; }
+    try { fpOrganic(dt); } catch (e) {}
     fpApplyArm(fpArms.userData.R, fpPose.R);
     fpTwoHand(dt);                                   // mão esquerda segura itens grandes
     fpApplyArm(fpArms.userData.L, fpPose.L);
@@ -2466,7 +2470,7 @@ function updateFP(dt, t) {
   // tempo do golpe / disparo (funciona mesmo sem os braços)
   if (fpAnim) {
     const A = fpAnim; A.t += dt;
-    if (A.kind === 'swing' && !A.done && A.t > .15) { A.done = true; fpKick = -.045; try { sfxSwing(); } catch (e) {} }
+    if (A.kind === 'swing' && !A.done && A.t > (A.hitAt || .15)) { A.done = true; fpKick = (weapon !== null && FP_CFG.twoHand.indexOf(weapon) >= 0) ? -.09 : -.045; if (A.v === 'HR') fpRoll = .035; else if (A.v === 'HL') fpRoll = -.035; else if (A.v === 'D') fpRoll = .02; try { sfxSwing(); } catch (e) {} }
     if ((A.kind === 'throw' || A.kind === 'fire') && !A.released && A.t >= A.rel) { A.released = true; releaseThrow(); if (A.kind === 'fire') { fpKick = .03; try { sfxFire(); } catch (e) {} } }
     if (A.t >= A.dur) fpAnim = null;
   }
@@ -3007,7 +3011,9 @@ function doJump() {
 function attack(){
   if(gameOver||!started||zDowned)return;
   if(zMode){zFire();return;}
-  const now=performance.now();if(now-lastAtk<30)return;lastAtk=now;
+  const now=performance.now();if(now-lastAtk<30)return;
+  if(weapon!==null&&fpAnim&&fpAnim.kind==='swing'&&fpAnim.t<fpAnim.dur*FP_CFG.comboWindow)return;   // só encadeia o próximo golpe quando o anterior já está voltando
+  lastAtk=now;
   startFP('swing');if(!sfxWeaponLoaded())beep(220,.07);
   if(!isSolo){if(socket)socket.emit('attack',{room:currentRoom,weapon,dmg:30+(weapon!==null?ITEMS[weapon].d:0)});return;}
   setTimeout(()=>{if(gameOver)return;
@@ -3024,7 +3030,7 @@ function attack(){
   });
   if(monster&&monster.awake&&!monster.dead){const mx=monster.root.position.x-camera.position.x,mz=monster.root.position.z-camera.position.z,md=Math.hypot(mx,mz);if(md<3.6&&(mx*fx_+mz*fz)/(md||1)>.3){monsterHurt(dmg);try{hitFeedback(monster.root.position.clone().setY(2.2),dmg,monster.dead);}catch(e){}}}
   checkSoloWin();
-  },40);
+  },fpHitMs||40);
 }
 function hurt(n){
   health=Math.max(0,health-n);$('healthFill').style.width=health+'%';hpClass();
@@ -5632,6 +5638,114 @@ function snipeTick(dt, t) {
     arr.style.display = 'block'; arr.style.transform = 'rotate(' + (Math.atan2((dx * rx + dz * rz) / d, (dx * fx + dz * fz) / d) * 180 / Math.PI) + 'deg)'; txt.textContent += ' · ' + Math.round(d) + ' m'; }
   else arr.style.display = 'none';
 }
+
+/* ==========================================================================
+   MOVIMENTO ORGÂNICO + GOLPES VARIADOS + MODELOS DAS COMBINAÇÕES
+   - Golpes: vertical (de cima), horizontal direita→esquerda, esquerda→direita e diagonal, encadeados em combo
+     (cada golpe tem preparação, aceleração até o impacto, passada do ponto e retorno; nunca saem idênticos).
+   - Organicidade: o braço "atrasa" quando você vira a câmera e o item balança no punho conforme o braço se move.
+   - Combinações com modelo próprio: Coquetel, Bomba de Garrafa, Arma Suprema (marreta). Para usar um modelo 3D seu depois,
+     é só trocar a função em COMBO_BUILD (ex.: COMBO_BUILD[8] = () => getItem('marreta')).
+   ========================================================================== */
+const FP_COMBO = { i: -1, t: 0 };
+const FP_HEAVY = w => FP_CFG.twoHand.indexOf(w) >= 0;
+function fpPickVariant(w) {                       // encadeia os golpes; se passar ~0,9 s sem bater, o combo recomeça
+  const seq = FP_HEAVY(w) ? ['V', 'HR', 'V', 'HL'] : ['V', 'HR', 'HL', 'D'], now = performance.now();
+  if (FP_COMBO.i < 0 || now - FP_COMBO.t > 900 || FP_COMBO.n !== seq.length) FP_COMBO.i = Math.floor(Math.random() * 3) - 1 + (Math.random() < .5 ? 0 : 0);
+  FP_COMBO.i = (FP_COMBO.i + 1) % seq.length; FP_COMBO.n = seq.length; FP_COMBO.t = now;
+  return seq[FP_COMBO.i];
+}
+function fpMakeSwing(v, w) {
+  const F = FPA, P = F.P, add = F.add, D = Math.PI / 180, cu = FP_CFG.gripCurl, cs = Math.min(1, cu + .12);
+  const lean = FP_CFG.itemLeanBy[w] !== undefined ? FP_CFG.itemLeanBy[w] : FP_CFG.itemLean, s = FP_HEAVY(w) ? 1.5 : 1;
+  const hor = -(90 - lean) * .8, up = Math.min(56, 28 + lean * .8), dn = (-(90 - lean) - 8) * .6, j = a => a + (Math.random() - .5) * 4;
+  // a pose é calculada a partir de ONDE FICA A MÃO (x direita, y cima, z frente = negativo), para o golpe nunca sair da tela
+  const HP = (hx, hy, hz, yaw, pitch, roll, curl) => { const cp = Math.cos(pitch * D); return P(hx + Math.sin(yaw * D) * cp * .42, hy - Math.sin(pitch * D) * .42, hz + Math.cos(yaw * D) * cp * .42, yaw, pitch, roll, curl); };
+  let tW = .12 * s, tS = .20 * s, dur = .52 * s, R;
+  const tail = (o, ov, se) => [[tS + .05 * s, ov, 'out'], [tS + .11 * s, se, 'io'], [dur, F.HR, 'io']];
+  if (v === 'V') {          // de cima para baixo
+    R = [[0, F.HR], [tW, HP(.17, .04, -.42, 4, j(up), -6, cu), 'out'], [tW + .035 * s, HP(.17, .07, -.38, 5, j(up + 6), -8, cu), 'io'], [tS, HP(.10, -.22, -.62, -3, j(dn), 4, cs), 'in']]
+      .concat(tail(0, HP(.09, -.27, -.66, -3, j(dn - 7), 5, cs), HP(.11, -.24, -.62, -3, j(dn - 2), 3, cu)));
+  } else if (v === 'HR') {  // horizontal: da direita para a esquerda
+    R = [[0, F.HR], [tW, HP(.40, -.15, -.50, -30, j(hor + 6), j(-12), cu), 'out'], [tW + .03 * s, HP(.43, -.15, -.48, -35, j(hor + 8), -14, cu), 'io'], [tS, HP(-.05, -.22, -.62, 30, j(hor - 2), 12, cs), 'in']]
+      .concat(tail(0, HP(-.14, -.23, -.62, 42, hor - 4, 14, cs), HP(-.07, -.22, -.60, 34, hor - 2, 10, cu)));
+  } else if (v === 'HL') {  // horizontal: da esquerda para a direita (de costas da mão)
+    R = [[0, F.HR], [tW, HP(-.12, -.18, -.52, 32, j(hor + 6), j(14), cu), 'out'], [tW + .03 * s, HP(-.15, -.18, -.50, 38, j(hor + 8), 16, cu), 'io'], [tS, HP(.36, -.22, -.60, -34, j(hor - 2), -14, cs), 'in']]
+      .concat(tail(0, HP(.45, -.23, -.60, -44, hor - 4, -16, cs), HP(.38, -.22, -.58, -36, hor - 2, -12, cu)));
+  } else {                  // diagonal: de cima à direita para baixo à esquerda
+    R = [[0, F.HR], [tW, HP(.32, -.02, -.46, -24, j(up * .7), j(-18), cu), 'out'], [tW + .03 * s, HP(.34, .00, -.44, -28, up * .75, -20, cu), 'io'], [tS, HP(-.02, -.26, -.64, 30, j(dn * .9), 14, cs), 'in']]
+      .concat(tail(0, HP(-.08, -.29, -.66, 42, dn, 16, cs), HP(-.03, -.26, -.62, 34, dn * .85, 12, cu)));
+  }
+  const L = [[0, F.HL], [tW, add(F.HL, -.03, .02, .04, -4, 2, 0, 0), 'out'], [tS, add(F.HL, .02, .02, -.02, 6, 4, 0, 0), 'in'], [dur, F.HL, 'io']];   // mão livre acompanha (itens de 2 mãos: a esquerda segue o item)
+  return { dur, R, L, hit: tS, v };
+}
+function fpSwingSetup() {                        // chamado por startFP() quando há item na mão
+  try {
+    const v = fpPickVariant(weapon), c = fpMakeSwing(v, weapon); FPA.clips.SwingX = c;
+    fpHitMs = Math.min(220, c.hit * 1000); return c;
+  } catch (e) { console.warn('swing', e); return null; }
+}
+
+/* ---------- organicidade: braços atrasam na virada da câmera; o item balança no punho ---------- */
+const fpIn = { x: 0, y: 0, wx: 0, wz: 0, ly: 0, lp: 0, init: false, pp: null };
+function fpOrganic(dt) {
+  if (dt <= 0) return;
+  if (!fpIn.init) { fpIn.ly = yaw; fpIn.lp = pitch; fpIn.init = true; }
+  const d = Math.max(dt, 1e-3), dy = Math.atan2(Math.sin(yaw - fpIn.ly), Math.cos(yaw - fpIn.ly)) / d, dp = (pitch - fpIn.lp) / d; fpIn.ly = yaw; fpIn.lp = pitch;
+  const k = Math.min(1, dt * 9), cl = (v, m) => Math.max(-m, Math.min(m, v));
+  fpIn.x += (cl(dy * .012, .06) - fpIn.x) * k; fpIn.y += (cl(-dp * .010, .05) - fpIn.y) * k;
+  const R = fpPose.R, L = fpPose.L;
+  R[0] += fpIn.x; L[0] += fpIn.x * .8; R[1] += fpIn.y; L[1] += fpIn.y * .8; R[3] += fpIn.x * 60; L[3] += fpIn.x * 50;
+  // atraso do punho: velocidade do braço → o item "chicoteia" um pouco para o lado contrário
+  if (!fpIn.pp) fpIn.pp = R.slice();
+  const vp = (R[4] - fpIn.pp[4]) * Math.PI / 180 / d, vy = (R[3] - fpIn.pp[3]) * Math.PI / 180 / d; fpIn.pp = R.slice();
+  const kw = Math.min(1, dt * 16); fpIn.wx += (cl(-vp * .016, .6) - fpIn.wx) * kw; fpIn.wz += (cl(-vy * .016, .6) - fpIn.wz) * kw;
+}
+
+/* ---------- modelos das combinações ---------- */
+function _lblTex(draw, w, h) { return canvasTex(w, h, draw, 1, 1); }
+function bombItem() {          // Bomba de Garrafa: corpo de bomba, gargalo de vidro e rótulo da garrafa
+  const g = new THREE.Group(), add = (o, x, y, z) => { o.position.set(x, y, z); o.castShadow = true; g.add(o); return o; };
+  add(new THREE.Mesh(new THREE.SphereGeometry(.24, 22, 16), std(0x2b2f36, { roughness: .4, metalness: .45 })), 0, 0, 0);
+  const lbl = _lblTex((c, w, h) => { c.fillStyle = '#f6e7c1'; c.fillRect(0, 0, w, h); c.fillStyle = '#b91c1c'; c.fillRect(0, 0, w, 16); c.fillRect(0, h - 16, w, 16); c.fillStyle = '#1f2937'; c.font = 'bold 50px Impact, Arial Black, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('BOMBA', w / 2, h / 2 - 8); c.font = 'bold 22px Arial'; c.fillText('GARRAFA ★ EXTRA', w / 2, h / 2 + 30); }, 256, 128);
+  [0, Math.PI].forEach(r => { const m = new THREE.Mesh(new THREE.CylinderGeometry(.246, .246, .15, 24, 1, true, r - 1.2, 2.4), new THREE.MeshStandardMaterial({ map: lbl, roughness: .7, side: THREE.DoubleSide })); add(m, 0, .02, 0); });
+  const glass = std(0x3fb36b, { roughness: .12, metalness: .1 }); glass.transparent = true; glass.opacity = .9;
+  add(new THREE.Mesh(new THREE.CylinderGeometry(.075, .17, .1, 16), glass), 0, .25, 0);       // ombro
+  add(new THREE.Mesh(new THREE.CylinderGeometry(.052, .06, .17, 14), glass), 0, .36, 0);      // gargalo
+  add(new THREE.Mesh(new THREE.CylinderGeometry(.07, .07, .03, 14), glass), 0, .455, 0);      // boca
+  add(new THREE.Mesh(new THREE.CylinderGeometry(.045, .05, .06, 12), std(0x92400e, { roughness: .8 })), 0, .5, 0);   // rolha
+  add(new THREE.Mesh(new THREE.CylinderGeometry(.012, .012, .12, 6), std(0x111827)), .02, .58, 0).rotation.z = -.3;   // pavio
+  add(new THREE.Mesh(new THREE.SphereGeometry(.03, 8, 6), new THREE.MeshBasicMaterial({ color: 0xfb923c })), .055, .64, 0);   // faísca
+  add(new THREE.Mesh(new THREE.TorusGeometry(.243, .013, 8, 28), std(0x6b7280, { metalness: .8, roughness: .3 })), 0, -.02, 0).rotation.x = Math.PI / 2;    // cinta de metal
+  return g;
+}
+function sledgeItem() {        // Arma Suprema: marreta grande (cabo na mão, cabeça no alto)
+  const g = new THREE.Group(), add = (o, x, y, z) => { o.position.set(x, y, z); o.castShadow = true; g.add(o); return o; };
+  add(new THREE.Mesh(new THREE.CylinderGeometry(.036, .044, 1.08, 12), std(0x8b5a2b, { roughness: .75 })), 0, .5, 0);                   // cabo
+  add(new THREE.Mesh(new THREE.CylinderGeometry(.047, .047, .3, 12), std(0x1f2937, { roughness: .9 })), 0, .14, 0);                      // empunhadura
+  add(new THREE.Mesh(new THREE.SphereGeometry(.058, 10, 8), std(0x374151, { metalness: .6, roughness: .4 })), 0, -.04, 0);               // pomo
+  const iron = std(0x3f4752, { metalness: .75, roughness: .32 });
+  add(new THREE.Mesh(new THREE.BoxGeometry(.5, .25, .25), iron), 0, 1.12, 0);                                                           // cabeça
+  [-1, 1].forEach(s => add(new THREE.Mesh(new THREE.BoxGeometry(.09, .29, .29), std(0x9ca3af, { metalness: .85, roughness: .25 })), s * .29, 1.12, 0));   // faces de bater
+  add(new THREE.Mesh(new THREE.BoxGeometry(.1, .27, .27), std(0xfacc15, { metalness: .6, roughness: .35, emissive: 0x7a5a00, emissiveIntensity: .4 })), 0, 1.12, 0);   // faixa dourada
+  const bolt = _lblTex((c, w, h) => { c.clearRect(0, 0, w, h); c.fillStyle = '#fde047'; c.strokeStyle = '#7a5a00'; c.lineWidth = 6; c.beginPath(); c.moveTo(70, 8); c.lineTo(28, 70); c.lineTo(58, 70); c.lineTo(44, 120); c.lineTo(100, 52); c.lineTo(68, 52); c.lineTo(88, 8); c.closePath(); c.fill(); c.stroke(); }, 128, 128);
+  [.131, -.131].forEach((z, i) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(.2, .2), new THREE.MeshBasicMaterial({ map: bolt, transparent: true })); m.position.set(0, 1.12, z); if (i) m.rotation.y = Math.PI; g.add(m); });
+  return g;
+}
+function molotovItem() {       // Coquetel de Baguete: garrafa com um pedaço de baguete servindo de pavio aceso
+  const g = new THREE.Group(), add = (o, x, y, z) => { o.position.set(x, y, z); o.castShadow = true; g.add(o); return o; };
+  const glass = std(0x3fb36b, { roughness: .1, metalness: .1 }); glass.transparent = true; glass.opacity = .88;
+  add(new THREE.Mesh(new THREE.CylinderGeometry(.1, .1, .36, 16), glass), 0, 0, 0);
+  add(new THREE.Mesh(new THREE.CylinderGeometry(.082, .082, .24, 14), std(0xd97706, { roughness: .3, emissive: 0x7c3a00, emissiveIntensity: .35 })), 0, -.05, 0);   // líquido
+  add(new THREE.Mesh(new THREE.CylinderGeometry(.04, .1, .12, 16), glass), 0, .24, 0);
+  add(new THREE.Mesh(new THREE.CylinderGeometry(.036, .04, .16, 12), glass), 0, .37, 0);
+  add(new THREE.Mesh(new THREE.CylinderGeometry(.1005, .1005, .12, 16, 1, true), std(0xf6e7c1, { roughness: .8 })), 0, -.02, 0);   // rótulo
+  add(new THREE.Mesh(new THREE.CylinderGeometry(.03, .036, .26, 10), std(0xd9a35b, { roughness: .8 })), .02, .53, 0).rotation.z = -.18;   // baguete-pavio
+  const fl = add(new THREE.Mesh(new THREE.ConeGeometry(.055, .2, 10), new THREE.MeshBasicMaterial({ color: 0xf97316 })), .05, .76, 0);
+  add(new THREE.Mesh(new THREE.ConeGeometry(.03, .12, 8), new THREE.MeshBasicMaterial({ color: 0xfde047 })), .05, .74, 0); fl.userData.flame = true;
+  return g;
+}
+const COMBO_BUILD = { 4: molotovItem, 7: bombItem, 8: sledgeItem };
 </script>
 <script>
 // ---- Controle do botão Voltar do Android ----
