@@ -2307,7 +2307,18 @@ const FPA = (() => {
   return { clips: C, GR, GL, HR, HL, P, add, mir };
 })();
 const FP_EASE = { io: u => u * u * (3 - 2 * u), in: u => u * u * u, out: u => 1 - Math.pow(1 - u, 3), lin: u => u, back: u => { const c = 2.70158; return 1 + c * Math.pow(u - 1, 3) + 1.70158 * Math.pow(u - 1, 2); } };
+function fpSpline(keys, t) {                       // curva suave pelas poses-chave: a velocidade é contínua, sem "parar e arrancar" a cada pose
+  const n = keys.length;
+  if (t <= keys[0][0]) return keys[0][1].slice();
+  if (t >= keys[n - 1][0]) return keys[n - 1][1].slice();
+  let j = 0; while (j < n - 2 && t >= keys[j + 1][0]) j++;
+  const k0 = keys[j], k1 = keys[j + 1], dt = k1[0] - k0[0], u = (t - k0[0]) / dt;
+  const tan = i => { const a = keys[Math.max(0, i - 1)], b = keys[Math.min(n - 1, i + 1)], sp = b[0] - a[0]; return (i === 0 || i === n - 1 || sp <= 0) ? null : a[1].map((_, c) => (b[1][c] - a[1][c]) / sp * (typeof keys[i][2] === 'number' ? keys[i][2] : .85)); };   // 3º valor da chave = "ganho" da velocidade ali
+  const m0 = tan(j), m1 = tan(j + 1), u2 = u * u, u3 = u2 * u, h00 = 2 * u3 - 3 * u2 + 1, h10 = u3 - 2 * u2 + u, h01 = -2 * u3 + 3 * u2, h11 = u3 - u2;
+  return k0[1].map((p0, c) => h00 * p0 + h10 * dt * (m0 ? m0[c] : 0) + h01 * k1[1][c] + h11 * dt * (m1 ? m1[c] : 0));
+}
 function fpTrack(keys, t) {
+  if (keys.spline) return fpSpline(keys, t);
   const n = keys.length;
   if (t <= keys[0][0]) return keys[0][1].slice();
   if (t >= keys[n - 1][0]) return keys[n - 1][1].slice();
@@ -2492,7 +2503,7 @@ function updateFP(dt, t) {
   // tempo do golpe / disparo (funciona mesmo sem os braços)
   if (fpAnim) {
     const A = fpAnim; A.t += dt;
-    if (A.kind === 'swing' && !A.done && A.t > (A.hitAt || .15)) { A.done = true; fpKick = (weapon !== null && FP_CFG.twoHand.indexOf(weapon) >= 0) ? -.09 : -.045; if (A.v === 'HR') fpRoll = .035; else if (A.v === 'HL') fpRoll = -.035; else if (A.v === 'D') fpRoll = .02; try { sfxSwing(); } catch (e) {} }
+    if (A.kind === 'swing' && !A.done && A.t > (A.hitAt || .15)) { A.done = true; fpKick = (weapon !== null && FP_CFG.twoHand.indexOf(weapon) >= 0) ? -.09 : -.045; if (A.v === 'HR') fpRoll = .022; else if (A.v === 'HL') fpRoll = -.022; else if (A.v === 'D') fpRoll = .014; try { sfxSwing(); } catch (e) {} }
     if ((A.kind === 'throw' || A.kind === 'fire') && !A.released && A.t >= A.rel) { A.released = true; releaseThrow(); if (A.kind === 'fire') { fpKick = .03; try { sfxFire(); } catch (e) {} } }
     if (A.t >= A.dur) fpAnim = null;
   }
@@ -5714,45 +5725,49 @@ function snipeTick(dt, t) {
    - Combinações com modelo próprio: Coquetel, Bomba de Garrafa, Arma Suprema (marreta). Para usar um modelo 3D seu depois,
      é só trocar a função em COMBO_BUILD (ex.: COMBO_BUILD[8] = () => getItem('marreta')).
    ========================================================================== */
-const FP_COMBO = { i: -1, t: 0 };
+const FP_VARIANTS = { light: ['V', 'HR', 'HL', 'D'], heavy: ['V', 'HR', 'V', 'HL'] };   // sequência do combo — tire letras para remover golpes (V vertical · HR direita→esquerda · HL esquerda→direita · D diagonal)
+const FP_COMBO = { i: -1, t: 0, n: 0 };
 const FP_HEAVY = w => FP_CFG.twoHand.indexOf(w) >= 0;
 function fpPickVariant(w) {                       // encadeia os golpes; se passar ~0,9 s sem bater, o combo recomeça
-  const seq = FP_HEAVY(w) ? ['V', 'HR', 'V', 'HL'] : ['V', 'HR', 'HL', 'D'], now = performance.now();
-  if (FP_COMBO.i < 0 || now - FP_COMBO.t > 900 || FP_COMBO.n !== seq.length) FP_COMBO.i = Math.floor(Math.random() * 3) - 1 + (Math.random() < .5 ? 0 : 0);
+  const seq = FP_HEAVY(w) ? FP_VARIANTS.heavy : FP_VARIANTS.light, now = performance.now();
+  if (FP_COMBO.i < 0 || now - FP_COMBO.t > 900 || FP_COMBO.n !== seq.length) FP_COMBO.i = Math.floor(Math.random() * 3) - 1;
   FP_COMBO.i = (FP_COMBO.i + 1) % seq.length; FP_COMBO.n = seq.length; FP_COMBO.t = now;
   return seq[FP_COMBO.i];
 }
-function fpMakeSwing(v, w) {
-  const F = FPA, P = F.P, add = F.add, D = Math.PI / 180, cu = FP_CFG.gripCurl, cs = Math.min(1, cu + .12);
-  const lean = FP_CFG.itemLeanBy[w] !== undefined ? FP_CFG.itemLeanBy[w] : FP_CFG.itemLean, s = FP_HEAVY(w) ? 1.5 : 1;
-  const hor = -(90 - lean) * .8, up = Math.min(56, 28 + lean * .8), dn = (-(90 - lean) - 8) * .6, j = a => a + (Math.random() - .5) * 4;
-  // a pose é calculada a partir de ONDE FICA A MÃO (x direita, y cima, z frente = negativo), para o golpe nunca sair da tela
+function fpMakeSwing(v, w, sR, sL) {
+  const F = FPA, P = F.P, add = F.add, D = Math.PI / 180, cu = FP_CFG.gripCurl, cs = Math.min(1, cu + .1);
+  const lean = FP_CFG.itemLeanBy[w] !== undefined ? FP_CFG.itemLeanBy[w] : FP_CFG.itemLean, heavy = FP_HEAVY(w), s = (heavy ? 1.45 : 1) * (1 + (Math.random() - .5) * .12);
+  const hor = -(90 - lean) * .8, up = Math.min(56, 28 + lean * .8), dn = (-(90 - lean) - 8) * .6, j = a => a + (Math.random() - .5) * 3;
+  // as poses são calculadas a partir de ONDE FICA A MÃO (x direita, y cima, z frente = negativo), para o golpe nunca sair da tela
   const HP = (hx, hy, hz, yaw, pitch, roll, curl) => { const cp = Math.cos(pitch * D); return P(hx + Math.sin(yaw * D) * cp * .42, hy - Math.sin(pitch * D) * .42, hz + Math.cos(yaw * D) * cp * .42, yaw, pitch, roll, curl); };
-  let tW = .12 * s, tS = .20 * s, dur = .52 * s, R;
-  const tail = (o, ov, se) => [[tS + .05 * s, ov, 'out'], [tS + .11 * s, se, 'io'], [dur, F.HR, 'io']];
+  const t1 = .10 * s, t2 = t1 + .035 * s, tS = t2 + .095 * s, tO = tS + .06 * s, tE = tS + .16 * s, dur = tS + .44 * s;
+  const fk = p => { const cp = Math.cos(p[4] * D); return [p[0] - Math.sin(p[3] * D) * cp * .42, p[1] + Math.sin(p[4] * D) * .42, p[2] - Math.cos(p[3] * D) * cp * .42]; };
+  const cl = (x, m) => Math.max(-m, Math.min(m, x));
+  let W, W2, S;                                     // preparação · respiro (puxa mais um pouco) · impacto
   if (v === 'V') {          // de cima para baixo
-    R = [[0, F.HR], [tW, HP(.17, .04, -.42, 4, j(up), -6, cu), 'out'], [tW + .035 * s, HP(.17, .07, -.38, 5, j(up + 6), -8, cu), 'io'], [tS, HP(.10, -.22, -.62, -3, j(dn), 4, cs), 'in']]
-      .concat(tail(0, HP(.09, -.27, -.66, -3, j(dn - 7), 5, cs), HP(.11, -.24, -.62, -3, j(dn - 2), 3, cu)));
+    W = HP(.17, .04, -.42, 4, j(up), -6, cu); W2 = HP(.17, .07, -.38, 5, j(up + 5), -8, cu); S = HP(.10, -.22, -.62, -3, j(dn), 4, cs);
   } else if (v === 'HR') {  // horizontal: da direita para a esquerda
-    R = [[0, F.HR], [tW, HP(.40, -.15, -.50, -30, j(hor + 6), j(-12), cu), 'out'], [tW + .03 * s, HP(.43, -.15, -.48, -35, j(hor + 8), -14, cu), 'io'], [tS, HP(-.05, -.22, -.62, 30, j(hor - 2), 12, cs), 'in']]
-      .concat(tail(0, HP(-.14, -.23, -.62, 42, hor - 4, 14, cs), HP(-.07, -.22, -.60, 34, hor - 2, 10, cu)));
-  } else if (v === 'HL') {  // horizontal: da esquerda para a direita (de costas da mão)
-    R = [[0, F.HR], [tW, HP(-.12, -.18, -.52, 32, j(hor + 6), j(14), cu), 'out'], [tW + .03 * s, HP(-.15, -.18, -.50, 38, j(hor + 8), 16, cu), 'io'], [tS, HP(.36, -.22, -.60, -34, j(hor - 2), -14, cs), 'in']]
-      .concat(tail(0, HP(.45, -.23, -.60, -44, hor - 4, -16, cs), HP(.38, -.22, -.58, -36, hor - 2, -12, cu)));
+    W = HP(.34, -.15, -.50, -24, j(hor + 5), -10, cu); W2 = HP(.37, -.15, -.48, -28, j(hor + 7), -12, cu); S = HP(-.04, -.22, -.62, 24, j(hor - 2), 10, cs);
+  } else if (v === 'HL') {  // horizontal: da esquerda para a direita
+    W = HP(-.08, -.18, -.52, 26, j(hor + 5), 12, cu); W2 = HP(-.11, -.18, -.50, 30, j(hor + 7), 14, cu); S = HP(.32, -.22, -.60, -26, j(hor - 2), -12, cs);
   } else {                  // diagonal: de cima à direita para baixo à esquerda
-    R = [[0, F.HR], [tW, HP(.32, -.02, -.46, -24, j(up * .7), j(-18), cu), 'out'], [tW + .03 * s, HP(.34, .00, -.44, -28, up * .75, -20, cu), 'io'], [tS, HP(-.02, -.26, -.64, 30, j(dn * .9), 14, cs), 'in']]
-      .concat(tail(0, HP(-.08, -.29, -.66, 42, dn, 16, cs), HP(-.03, -.26, -.62, 34, dn * .85, 12, cu)));
+    W = HP(.30, -.02, -.46, -20, j(up * .7), -14, cu); W2 = HP(.32, 0, -.44, -24, up * .75, -16, cu); S = HP(-.02, -.26, -.64, 24, j(dn * .9), 12, cs);
   }
-  const L = [[0, F.HL], [tW, add(F.HL, -.03, .02, .04, -4, 2, 0, 0), 'out'], [tS, add(F.HL, .02, .02, -.02, 6, 4, 0, 0), 'in'], [dur, F.HL, 'io']];   // mão livre acompanha (itens de 2 mãos: a esquerda segue o item)
-  return { dur, R, L, hit: tS, v };
+  // a mão PASSA do ponto de impacto (continua na mesma direção) em vez de frear nele: assim a velocidade é máxima no impacto
+  const hS = fk(S), hW = fk(W2), kx = .42;
+  const O = HP(hS[0] + (hS[0] - hW[0]) * kx, hS[1] + (hS[1] - hW[1]) * kx, hS[2] + (hS[2] - hW[2]) * kx * .6, S[3] + cl((S[3] - W2[3]) * .25, 14), S[4] + cl((S[4] - W2[4]) * .2, 12), S[5] + cl((S[5] - W2[5]) * .3, 6), cs);
+  const E = S.map((x, i) => x + (O[i] - x) * .35); E[6] = cu;                          // assenta: volta um pouco do excesso
+  const R = [[0, sR || F.HR], [t1, W, .9], [t2, W2, .35], [tS, S, 2.0], [tO, O, 1.1], [tE, E, .6], [dur, F.HR]];   // ganho baixo antes do golpe (arranca devagar) e alto no impacto (velocidade máxima na pancada)       // começa da pose ATUAL: encadear golpes não dá tranco
+  const Lk = [[0, sL || F.HL], [t1, add(F.HL, -.03, .02, .04, -4, 2, 0, 0)], [tS, add(F.HL, .02, .02, -.02, 6, 4, 0, 0)], [dur, F.HL]];   // mão livre acompanha (itens de 2 mãos: a esquerda segue o item)
+  R.spline = true; Lk.spline = true;
+  return { dur, R, L: Lk, hit: tS, v };
 }
 function fpSwingSetup() {                        // chamado por startFP() quando há item na mão
   try {
-    const v = fpPickVariant(weapon), c = fpMakeSwing(v, weapon); FPA.clips.SwingX = c;
-    fpHitMs = Math.min(220, c.hit * 1000); return c;
+    const v = fpPickVariant(weapon), c = fpMakeSwing(v, weapon, fpPose.R.slice(), fpPose.L.slice()); FPA.clips.SwingX = c;
+    fpHitMs = Math.max(60, Math.min(280, c.hit * 1000 - 20)); return c;
   } catch (e) { console.warn('swing', e); return null; }
 }
-
 
 /* ---------- projétil orientado: a ponta fina (gargalo da garrafa, ponta do cabo da vassoura, osso do presunto) aponta para onde ele vai, e o item gira em torno desse eixo como uma bala de arma ---------- */
 function projAim(p, dt) {
@@ -5775,8 +5790,8 @@ function fpOrganic(dt) {
   R[0] += fpIn.x; L[0] += fpIn.x * .8; R[1] += fpIn.y; L[1] += fpIn.y * .8; R[3] += fpIn.x * 60; L[3] += fpIn.x * 50;
   // atraso do punho: velocidade do braço → o item "chicoteia" um pouco para o lado contrário
   if (!fpIn.pp) fpIn.pp = R.slice();
-  const vp = (R[4] - fpIn.pp[4]) * Math.PI / 180 / d, vy = (R[3] - fpIn.pp[3]) * Math.PI / 180 / d; fpIn.pp = R.slice();
-  const kw = Math.min(1, dt * 16); fpIn.wx += (cl(-vp * .016, .6) - fpIn.wx) * kw; fpIn.wz += (cl(-vy * .016, .6) - fpIn.wz) * kw;
+  const vp = cl((R[4] - fpIn.pp[4]) * Math.PI / 180 / d, 25), vy = cl((R[3] - fpIn.pp[3]) * Math.PI / 180 / d, 25); fpIn.pp = R.slice();
+  const kw = Math.min(1, dt * 11); fpIn.wx += (cl(-vp * .012, .32) - fpIn.wx) * kw; fpIn.wz += (cl(-vy * .012, .32) - fpIn.wz) * kw;
 }
 
 /* ---------- modelos das combinações ---------- */
