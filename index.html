@@ -567,6 +567,7 @@ let yaw = 0, pitch = 0, bob = 0;
 const keys = {}, jv = { x: 0, y: 0 };
 let zMode = false;   // true = modo Ataque Zumbi
 let lobbyMode = 'versus', zDowned = false, deaths = 0, deathX = 0, deathZ = 0;   // lobbyMode: 'versus' | 'zombie' (coop) · zDowned: caído, esperando reviver
+let NET_POWER = null;      // energia inicial vinda do servidor (online)
 const zCoop = () => zMode && !isSolo;     // Ataque Zumbi ONLINE cooperativo
 
 /* =====================================================================
@@ -1517,6 +1518,7 @@ function bindSocket(s) {
   s.on('voiceSignal', d => voiceSignal(d));
   s.on('gameStart', d => {
     mySpawn = (d && d.spawns && d.spawns[myId]) || null; hostId = d ? d.hostId : null; matchEnd = (d && d.endsIn) ? performance.now() + d.endsIn : 0;
+    NET_POWER = (d && typeof d.power === 'boolean') ? d.power : null;
     teamMode = !!(d && d.teamMode); zMode = !!(d && d.mode === 'zombie'); if (d && d.zTotal) ZCFG.total = d.zTotal;
     const tg = $('teamTag'); if (tg) tg.textContent = teamMode ? ' · TIME ' + TEAM_NAME[myTeam].toUpperCase() : '';
     startGame(false);
@@ -1552,10 +1554,10 @@ function bindSocket(s) {
     if (!zMode || !started || !scene || !Z.in) { s.emit('zSpawnFail', { room: currentRoom, id: d.id }); return; }
     const sp = zPickSpot(d.kind);
     if (!sp) { s.emit('zSpawnFail', { room: currentRoom, id: d.id }); return; }
-    const m = zCreate(sp[0], sp[1], d.id);
+    const m = zCreate(sp[0], sp[1], d.id); if (d.kind === 'boss') bossApply(m);
     s.emit('zSpawned', { room: currentRoom, id: d.id, x: sp[0], z: sp[1], ry: m.root.rotation.y, speed: m.speed });
   });
-  s.on('zSpawn', d => { if (zMode && scene && Z.in && !Z.byId[d.id]) zCreate(d.x, d.z, d.id, d.speed, d.ry); });
+  s.on('zSpawn', d => { if (zMode && scene && Z.in) { let z = Z.byId[d.id]; if (!z) z = zCreate(d.x, d.z, d.id, d.speed, d.ry); if (d.boss) bossApply(z); } });
   s.on('zSim', d => {                            // posições simuladas pelo anfitrião
     if (!zMode || amHost() || !scene || !Z.in) return;
     for (const a of d.z) {
@@ -1573,6 +1575,8 @@ function bindSocket(s) {
   s.on('zShot', d => { if (zMode && scene) zRemoteShot(d); });
   s.on('thrown', d => { if (scene) spawnProj(d.weapon, new THREE.Vector3(d.x, d.y, d.z), new THREE.Vector3(d.dx, d.dy, d.dz), true); });
   s.on('lootTaken', d => { const o = loot[d.i]; if (o && !o.taken) takeLoot(o); });
+  s.on('evt', d => { if (typeof EVT !== 'undefined' && EVT.on) evtRun(d); else (window.__evtBuf = window.__evtBuf || []).push(d); });   // promoção / curto-circuito / loot do telhado
+  ['bPlace', 'bRepair', 'bHp', 'bState', 'bSpot', 'bDeny'].forEach(ev => s.on(ev, d => { try { barrNetApply(ev, d); } catch (e) {} }));   // barricadas dos colegas
   s.on('error', m => alert(m));
 }
 function updateLobby(players) {
@@ -2034,8 +2038,8 @@ async function startGame(solo) {
   showLoading();
   try { await _startGame(solo); } catch (e) { console.error('startGame', e); }
   await finishLoading();
-  if (started && zCoop() && socket) socket.emit('zReady', { room: currentRoom });     // coop: avisa o servidor que já pode começar as ondas
-  if (started) { try { PW.on = !POWER_CFG.startOff; } catch (e) {} tocarMusica(); }          // música só depois que o jogo abriu
+  if (started && !isSolo && socket) socket.emit('zReady', { room: currentRoom });     // coop: avisa o servidor que já pode começar as ondas
+  if (started) { try { PW.on = powerStartOn(); } catch (e) {} tocarMusica(); }          // música só depois que o jogo abriu
   if (started && !isSolo) voiceStart();   // voz do time (só online)
 }
 async function _startGame(solo) {
@@ -3578,8 +3582,8 @@ function makeZombie() {
 }
 function zTargets() {                         // jogadores que os zumbis podem perseguir (vivos)
   const t = [];
-  if (!zDowned) t.push({ id: myId, x: camera.position.x, z: camera.position.z });
-  if (zCoop()) for (const id in others) { const o = others[id]; if (o.visible && !actorOf(o).dead) t.push({ id, x: o.position.x, z: o.position.z }); }
+  if (!zDowned) t.push({ id: myId, x: camera.position.x, z: camera.position.z, fy: camera.position.y - 1.7 });
+  if (zCoop()) for (const id in others) { const o = others[id]; if (o.visible && !actorOf(o).dead) t.push({ id, x: o.position.x, z: o.position.z, fy: o.position.y }); }
   return t;
 }
 function zNearest(p) {
@@ -3649,12 +3653,13 @@ function zNetHit(d) {                         // o servidor confirmou o dano (to
   }
   if (amHost()) {                              // o anfitrião empurra o zumbi (os outros seguem a posição dele)
     const o = d.by === myId ? camera.position : (others[d.by] && others[d.by].position);
-    if (o) { const kx = z.pos.x - o.x, kz = z.pos.z - o.z, l = Math.hypot(kx, kz) || 1; move(z.pos, kx / l * .5, kz / l * .5, .4); }
+    if (o) { const kx = z.pos.x - o.x, kz = z.pos.z - o.z, l = Math.hypot(kx, kz) || 1, kb = z.kb !== undefined ? z.kb : 1; zmove(z.pos, kx / l * .5 * kb, kz / l * .5 * kb, .4); }
   }
 }
 function zNetDead(d) {
   const z = Z.byId[d.id]; if (!z || z.dead) return;
-  z.dead = true; z.deadT = 0; z.hp = 0; if (d.by === myId) { kills++; try { hitFeedback(new THREE.Vector3(z.pos.x, 2, z.pos.z), 0, true); } catch (e) {} }
+  z.dead = true; z.deadT = 0; z.hp = 0; if (z.boss) { try { bossDead(z); } catch (e) {} }
+  if (d.by === myId) { kills++; try { hitFeedback(new THREE.Vector3(z.pos.x, 2, z.pos.z), 0, true); } catch (e) {} }
   beep(90, .15, 'sawtooth'); burst(new THREE.Vector3(z.pos.x, 1, z.pos.z), 0x84cc16, 18);
 }
 function zKill(z) {
@@ -3794,7 +3799,7 @@ function zUpdate(dt, t) {
         if (z.atk > .3 && !z.atkHit) {
           z.atkHit = true;
           if (z.hitBarr) { try { barrHit(z.hitBarr, z); } catch (e) {} z.hitBarr = null; } else
-          if (tg && !(tg.id === myId && SNP.onRoof) && Math.hypot(tg.x - p.x, tg.z - p.z) < (z.range || ZCFG.range) + .5) {
+          if (tg && !(tg.fy > 3.8) && Math.hypot(tg.x - p.x, tg.z - p.z) < (z.range || ZCFG.range) + .5) {
             if (zCoop()) { if (socket) socket.emit('zAttack', { room: currentRoom, id: z.id, target: tg.id }); }   // o servidor confere e aplica o dano
             else hurt((z.dmg || ZCFG.dmg) * (z.crawl ? ZCFG.crawlDmgMul : 1));
           }
@@ -5255,6 +5260,7 @@ function ensureAndar2() {
    Lanterna: tecla L (ou botão 🔦). No online, o estado da energia é enviado aos outros jogadores (precisa do trecho no server.js).
    Para pôr o disjuntor onde quiser: POWER_CFG.x / z / rot, ou adicione {"t":"power","x":..,"z":..,"rot":0} no map.json (rot 0 = olhando para +z).
    ========================================================================== */
+function powerStartOn() { return (typeof isSolo !== 'undefined' && !isSolo && typeof NET_POWER === 'boolean') ? NET_POWER : !POWER_CFG.startOff; }
 const POWER_CFG = { startOff: true, x: null, z: null, rot: 0, dark: { hemi: .16, sun: .12 }, flashlight: true };
 
 function _pwTex(w, h, fn) { const c = document.createElement('canvas'); c.width = w; c.height = h; fn(c.getContext('2d'), w, h); const t = new THREE.CanvasTexture(c); t.anisotropy = 4; return t; }
@@ -5269,7 +5275,7 @@ function powerBuild() {
   PW.sunI = typeof sunLight !== 'undefined' && sunLight ? sunLight.intensity : 0;
   try { powerBox(); } catch (e) { console.warn('disjuntor', e); }
   try { powerFlash(); } catch (e) { console.warn('lanterna', e); }
-  PW.on = !POWER_CFG.startOff; PW.k = PW.on ? 1 : 0; powerApply(PW.k); powerLeverNow();
+  PW.on = powerStartOn(); PW.k = PW.on ? 1 : 0; powerApply(PW.k); powerLeverNow();
   if (POWER_CFG.flashlight) PW.flOn = !PW.on;
   try { musicaSync(); } catch (e) {}
   if (!PW.on) setTimeout(() => { try { toast('🌑 Sem energia! Ache o disjuntor no fundo do estoque' + (isTouch ? ' (🔦 lanterna)' : ' · L = lanterna')); } catch (e) {} }, 2500);
@@ -5395,7 +5401,7 @@ function hitFeedback(pos, dmg, kill) {
 }
 function evtOnPlayerHit(d) {          // online: o servidor manda a vida; o dano é a diferença
   const prev = HPSEEN[d.id] != null ? HPSEEN[d.id] : 100; HPSEEN[d.id] = d.health;
-  if (d.by === myId && d.id !== myId && others[d.id]) { const o = others[d.id]; hitFeedback(new THREE.Vector3(o.position.x, 1.9, o.position.z), Math.max(1, prev - d.health), false); }
+  if (d.by === myId && d.id !== myId && others[d.id]) { const o = others[d.id]; hitFeedback(new THREE.Vector3(o.position.x, 1.9, o.position.z), d.dmg != null ? d.dmg : Math.max(1, prev - d.health), false); }
 }
 function evtKill(id) { const o = others[id]; if (o) hitFeedback(new THREE.Vector3(o.position.x, 1.9, o.position.z), 0, true); }
 
@@ -5525,7 +5531,10 @@ function chanTick() {
 function bossOnWave(n) { if (zCoop() || n % BOSS_CFG.every !== 0) return; bossSpawn(); }
 function bossSpawn() {
   const s = zPickSpot('outside'); if (!s) { setTimeout(bossSpawn, 1500); return; }
-  const z = zCreate(s[0], s[1]);
+  bossApply(zCreate(s[0], s[1]));
+}
+function bossApply(z) {                          // transforma um zumbi no GERENTE (solo: criado aqui; coop: o servidor manda kind='boss' / boss=true)
+  if (z.boss) return;
   z.boss = true; z.root.scale.setScalar(BOSS_CFG.scale); z.hp = z.maxHp = BOSS_CFG.hp; z.speed = BOSS_CFG.speed; z.range = ZCFG.range * BOSS_CFG.scale; z.dmg = BOSS_CFG.dmg; z.kb = .08;
   z.mats.forEach(m => { if (m.color) m.color.multiply(new THREE.Color(1, .6, .5)); });
   BOSS.z = z; shake = 1.2; beep(60, .5, 'sawtooth');
@@ -5556,15 +5565,18 @@ function evtBuild() {
   if (!zMode && C.curto.on) for (let t = rr(...C.curto.first); t < 2400; t += rr(...C.curto.every)) EVT.q.push({ t, type: 'curto', seed: Math.floor(R() * 1e9) });
   if (!zMode && C.roof.on) { EVT.q.push({ t: C.roof.first, type: 'roof', seed: Math.floor(R() * 1e9) }); for (let t = 140; t < 2400; t += rr(...C.roof.every)) EVT.q.push({ t, type: 'roof', seed: Math.floor(R() * 1e9) }); }
   EVT.q.sort((a, b) => a.t - b.t);
+  if (typeof isSolo !== 'undefined' && !isSolo) EVT.q = [];            // online: o SERVIDOR manda os eventos, na mesma hora para todos
+  (window.__evtBuf || []).splice(0).forEach(evtRun);                    // eventos que chegaram antes de terminar de carregar
   try { snipeBuild(); } catch (e) { console.warn('snipeBuild', e); }
   try { barrBuild(); } catch (e) { console.warn('barrBuild', e); }
 }
+function evtRun(ev) { try { if (ev.type === 'promo') evtPromo(ev); else if (ev.type === 'curto') evtCurto(ev); else if (ev.type === 'roof') evtRoof(ev); } catch (e) { console.warn('evento', ev.type, e); } }
 function evtTick(dt, t) {
   if (!EVT.on || !started || gameOver) return;
   const now = (performance.now() - EVT.t0) / 1000;
   try { snipeTick(dt, t); } catch (e) { if (!snipeTick.err) { snipeTick.err = 1; console.warn('snipeTick', e); } }
   try { barrTick(dt, t); } catch (e) { if (!barrTick.err) { barrTick.err = 1; console.warn('barrTick', e); } }
-  while (EVT.q.length && EVT.q[0].t <= now) { const ev = EVT.q.shift(); try { if (ev.type === 'promo') evtPromo(ev); else if (ev.type === 'curto') evtCurto(ev); else if (ev.type === 'roof') evtRoof(ev); } catch (e) { console.warn('evento', ev.type, e); } }
+  while (EVT.q.length && EVT.q[0].t <= now) evtRun(EVT.q.shift());
   if (PROMO.on) {
     const left = Math.ceil(PROMO.end - now), hud = EVT.ui.promo; if (left <= 0 || !PROMO.items.some(l => !l.taken)) promoEnd();
     else if (hud) {
@@ -5606,7 +5618,7 @@ function snipeBuild() {
   };
   SNP.ui.btn.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); snipeZoom(); });
   SNP.ui.btn.addEventListener('touchstart', e => e.stopPropagation(), { passive: true });
-  if (zCoop()) announce('rare', 'DEFESA DO MERCADO!', zCoop() ? 'Suba ao telhado (escada nos fundos do estoque) e use a bazuca como sniper' : 'Suba ao telhado em ' + SNIPE_CFG.prep + ' s (escada nos fundos do estoque) — os zumbis vêm do estacionamento', 'Atenção! Todos ao telhado! Defendam o mercado!');
+  // (o aviso inicial agora é o anúncio dos funcionários, em barrBuild → zombieIntro)
 }
 function snipeZoom() {
   if (!SNP.onRoof || KC.on) return;
@@ -5701,14 +5713,14 @@ function snipeTick(dt, t) {
     else if (SNP.locked && n <= SNIPE_CFG.release) { SNP.locked = false; announce('rare', 'MERCADO RETOMADO!', 'Pode voltar ao telhado e atirar', 'Mercado retomado.'); }
   }
   // HUD
-  const hud = SNP.ui.hud, arr = hud.firstChild, txt = hud.lastChild, left = Math.ceil(SNIPE_CFG.prep - (now - SNP.t0) / 1000);
+  const hud = SNP.ui.hud, arr = hud.firstChild, txt = hud.lastChild, left = (zCoop() && Z.srv && Z.srv.issued === 0 && Z.srv.waveIn >= 0) ? Math.ceil(Z.srv.waveIn) : Math.ceil(SNIPE_CFG.prep - (now - SNP.t0) / 1000);   // coop: o relógio vem do servidor
   let msg, cls = '', target = null;
   if (SNP.locked) { msg = 'MERCADO INVADIDO · ' + SNP.inside + ' dentro · DESÇA E ENFRENTE-OS'; cls = ' bad'; if (SNP.onRoof && SNP.ladder) target = SNP.ladder; }
   else if (SNP.onRoof) msg = 'ATIRADOR · munição ' + SNP.ammo + '/' + SNIPE_CFG.ammoMax + ' · dentro do mercado ' + SNP.inside + '/' + SNIPE_CFG.invade;
   else if (!SNP.reached) {
     const bo = (typeof barrObjective === 'function') ? barrObjective() : null;
-    if (bo) { msg = 'BARRICADE O MERCADO · ' + (!zCoop() && left > 0 ? left + ' s · ' : '') + (CARRY.on ? 'leve a caixa a uma porta' : 'pegue caixas'); target = bo; }
-    else { msg = (!zCoop() && left > 0 ? 'SUBA AO TELHADO · ' + left + ' s' : 'SUBA AO TELHADO'); target = SNP.ladder; }
+    if (bo) { msg = 'BARRICADE O MERCADO · ' + (left > 0 ? left + ' s · ' : '') + (CARRY.on ? 'leve a caixa a uma porta' : 'pegue caixas'); target = bo; }
+    else { msg = (left > 0 ? 'SUBA AO TELHADO · ' + left + ' s' : 'SUBA AO TELHADO'); target = SNP.ladder; }
   }
   else msg = 'Dentro do mercado ' + SNP.inside + '/' + SNIPE_CFG.invade + (SNP.locked ? '' : ' · sniper no telhado');
   hud.className = 'show' + cls; txt.textContent = msg;
@@ -5901,26 +5913,47 @@ function barrMakeSlot(d) {
 function cellBuild(S, c) {
   const C = BARR_CFG, m = new THREE.Mesh(new THREE.BoxGeometry(c.hx * 2, C.crateH, c.hz * 2), crateMat());
   m.position.set(c.cx, C.crateH / 2 + .7, c.cz); m.castShadow = true; m.receiveShadow = true; scene.add(m);
-  c.mesh = m; c.hp = C.crateHp; c.alive = true; c.drop = 0; c.shake = 0;
+  c.mesh = m; c.hp = C.crateHp; c.alive = true; c.drop = 0; c.shake = 0; c.placedAt = performance.now();
   c.col = { x1: c.cx - c.hx, x2: c.cx + c.hx, z1: c.cz - c.hz, z2: c.cz + c.hz }; colliders.push(c.col);
   try { if (hit(camera.position.x, camera.position.z, .4, playerUp)) unstick(camera.position); } catch (e) {}
 }
-function cellBreak(S, c) {
-  c.alive = false; if (c.mesh) { burst(new THREE.Vector3(c.cx, 1, c.cz), 0xb98a56, 16); scene.remove(c.mesh); c.mesh.material.dispose(); c.mesh = null; }
+function cellBreak(S, c, quiet) {
+  c.alive = false; c.brokenAt = performance.now(); if (c.mesh) { burst(new THREE.Vector3(c.cx, 1, c.cz), 0xb98a56, 16); scene.remove(c.mesh); c.mesh.material.dispose(); c.mesh = null; }
   const i = colliders.indexOf(c.col); if (i >= 0) colliders.splice(i, 1); c.col = null;
-  if (S.cells.every(q => !q.alive) && !S.broken) { S.broken = true; toast('A barricada da ' + S.name + ' caiu!'); beep(90, .3, 'sawtooth'); }
+  if (S.cells.every(q => !q.alive) && !S.broken) { S.broken = true; if (!quiet) { toast('A barricada da ' + S.name + ' caiu!'); beep(90, .3, 'sawtooth'); } }
   if (S.marker) S.marker.visible = true;
 }
+function barrNet(ev, S, c, extra) { if (typeof isSolo !== 'undefined' && !isSolo && socket && currentRoom) socket.emit(ev, Object.assign({ room: currentRoom, s: BARR.slots.indexOf(S), c: S.cells.indexOf(c) }, extra || {})); }
+function barrNet2(ev, payload) { if (typeof isSolo !== 'undefined' && !isSolo && socket && currentRoom) socket.emit(ev, Object.assign({ room: currentRoom }, payload)); }
+function spotSet(sp, n) { sp.n = Math.max(0, Math.min(sp.max, n)); sp.boxes.forEach((b, i) => { b.visible = i < sp.n; }); sp.beam.visible = sp.ring.visible = sp.n > 0; }
+function barrApplyState(d) {                     // estado completo vindo do servidor: todos os jogadores ficam com as MESMAS barricadas e pilhas
+  const now = performance.now(), h = d.h || {}, host = (typeof amHost === 'function') && amHost();
+  BARR.slots.forEach((S, si) => S.cells.forEach((c, ci) => {
+    const hp = h[si * 100 + ci] || 0;
+    if (hp > 0) { if (!c.alive) { if (now - (c.brokenAt || 0) > 3000) { cellBuild(S, c); S.broken = false; c.hp = hp; } } else if (!host) c.hp = hp; }
+    else if (c.alive && now - (c.placedAt || 0) > 2500) cellBreak(S, c, true);
+  }));
+  Object.keys(d.sp || {}).forEach(i => { const sp = BARR.spots.find(q => q.id === +i); if (sp) spotSet(sp, d.sp[i]); });
+}
+function barrNetApply(ev, d) {                   // colega colocou / reforçou / zumbis bateram (o servidor guarda a vida)
+  if (ev === 'bState') { barrApplyState(d); return; }
+  if (ev === 'bSpot') { const sp = BARR.spots.find(q => q.id === d.i); if (sp) spotSet(sp, d.n); return; }
+  if (ev === 'bDeny') { if (CARRY.on) { carrySet(false); toast('Outro jogador pegou a última caixa'); } return; }
+  const S = BARR.slots[d.s]; if (!S) return; const c = S.cells[d.c]; if (!c) return;
+  if (ev === 'bPlace') { if (!c.alive) { cellBuild(S, c); S.broken = false; } else c.hp = BARR_CFG.crateHp; }
+  else if (ev === 'bRepair') { c.hp = BARR_CFG.crateHp; c.shake = .2; }
+  else if (ev === 'bHp') { c.hp = d.hp; c.shake = .15; if (d.hp <= 0 && c.alive) cellBreak(S, c); }
+}
 function barrPlace(S) {
-  for (const c of S.order) if (!c.alive) { cellBuild(S, c); S.broken = false; return 'placed'; }
+  for (const c of S.order) if (!c.alive) { cellBuild(S, c); S.broken = false; barrNet('bPlace', S, c); return 'placed'; }
   const weak = S.cells.filter(c => c.alive && c.hp < BARR_CFG.crateHp - 1).sort((a, b) => a.hp - b.hp)[0];
-  if (weak) { weak.hp = BARR_CFG.crateHp; weak.shake = .2; return 'repaired'; }
+  if (weak) { weak.hp = BARR_CFG.crateHp; weak.shake = .2; barrNet('bRepair', S, weak); return 'repaired'; }
   return null;
 }
 function barrHit(c, z) {                     // chamado por zUpdate quando um zumbi bate numa caixa
   if (!c.alive) return;
   const S = BARR.slots.find(s => s.cells.indexOf(c) >= 0);
-  c.hp -= BARR_CFG.zDmg * (z && z.boss ? 3 : 1); c.shake = .18;
+  const dmg = BARR_CFG.zDmg * (z && z.boss ? 3 : 1); c.hp -= dmg; c.shake = .18; if (S) barrNet('bHit', S, c, { d: dmg });   // só o anfitrião simula os zumbis, então só ele reporta
   const now = performance.now(); if (now - BARR.sfxT > 140) { BARR.sfxT = now; beep(100 + Math.random() * 40, .05, 'square'); burst(new THREE.Vector3(c.cx, 1.2, c.cz), 0xd9a35b, 3); }
   if (c.hp <= 0 && S) cellBreak(S, c);
 }
@@ -5950,7 +5983,7 @@ function barrSpotsBuild() {
   if (wall) [-.3, 0, .3].forEach(k => anchors.push([wall.x - 3.4, wall.z + wall.len * k, 4]));
   const ce = M.filter(o => o.t === 'ceiling').sort((a, b) => (a.z - a.d / 2) - (b.z - b.d / 2))[0];             // estoque (teto mais ao fundo)
   if (ce) [-.34, -.1, .14, .36].forEach(k => anchors.push([ce.x + ce.w * k, ce.z - ce.d / 2 + 3.5, 4]));
-  anchors.forEach(a => barrSpotAt(a[0], a[1], a[2], BARR_CFG.respawn));
+  anchors.forEach((a, i) => { const S = barrSpotAt(a[0], a[1], a[2], BARR_CFG.respawn); S.id = i; });
 }
 
 /* ---------- carregar ---------- */
@@ -5963,6 +5996,10 @@ function carrySet(on) {
 }
 function barrDrop() {
   if (!CARRY.on) return;
+  if (typeof isSolo !== 'undefined' && !isSolo) {                      // coop: a caixa volta ao ponto de caixas mais próximo (o mundo fica igual para todos)
+    const px = camera.position.x, pz = camera.position.z, sp = BARR.spots.filter(q => q.id !== undefined && q.n < q.max).sort((a, b) => Math.hypot(a.x - px, a.z - pz) - Math.hypot(b.x - px, b.z - pz))[0];
+    if (sp) { spotSet(sp, sp.n + 1); carrySet(false); barrNet2('bPut', { i: sp.id, max: sp.max }); toast('Caixa devolvida ao estoque'); beep(140, .06, 'triangle'); return; }
+  }
   carrySet(false); const d = lookDir(), x = camera.position.x + d.x * 1.3, z = camera.position.z + d.z * 1.3;
   const s = barrSpotAt(x, z, 1, 0); toast('Caixa solta'); beep(140, .06, 'triangle'); return s;
 }
@@ -5996,6 +6033,7 @@ function barrPickup() {                      // chamado por pickup(): true = tra
   }
   const sp = spotNear(); if (!sp) return false;
   sp.n--; if (sp.boxes[sp.n]) sp.boxes[sp.n].visible = false; sp.tPick = performance.now();
+  if (sp.id !== undefined) barrNet2('bPick', { i: sp.id, max: sp.max });
   if (sp.n <= 0) { sp.beam.visible = false; sp.ring.visible = false; if (!sp.respawn) { scene.remove(sp.g); BARR.spots.splice(BARR.spots.indexOf(sp), 1); } }
   carrySet(true); toast('Caixa na mão — leve até a ENTRADA ou a SAÍDA'); beep(520, .06, 'sine'); return true;
 }
@@ -6011,7 +6049,7 @@ function barrTick(dt, t) {
   if (!BARR.on) return;
   const now = performance.now();
   BARR.spots.forEach(S => {                  // reposição das caixas
-    if (S.respawn && S.n < S.max && now - S.tPick >= BARR_CFG.respawn * 1000) { if (S.boxes[S.n]) S.boxes[S.n].visible = true; S.n++; S.tPick = now; S.beam.visible = true; S.ring.visible = true; }
+    if (S.respawn && isSolo && S.n < S.max && now - S.tPick >= BARR_CFG.respawn * 1000)   // online: a reposição é do servidor { if (S.boxes[S.n]) S.boxes[S.n].visible = true; S.n++; S.tPick = now; S.beam.visible = true; S.ring.visible = true; }
     if (S.beam.visible) S.beam.material.opacity = .18 + Math.sin(t * 3 + S.x) * .06;
   });
   BARR.slots.forEach(S => {
@@ -6041,7 +6079,7 @@ function zombieIntro() {
 function barrBuild() {
   ['barrHud', 'carryHud'].forEach(id => { const o = document.getElementById(id); if (o) o.remove(); });
   BARR.on = false; BARR.slots = []; BARR.spots = []; CARRY.on = false; CARRY.mesh = null;
-  if (!zMode || zCoop()) return;
+  if (!zMode) return;
   fenceBuild();
   barrDoors().forEach(d => BARR.slots.push(barrMakeSlot(d)));
   if (!BARR.slots.length) { console.warn('barricadas: nenhuma porta de entrada (glass perto de z>20) encontrada no map.json'); return; }
@@ -6049,6 +6087,7 @@ function barrBuild() {
   const g = $('game'), mk = (id, html) => { const e = document.createElement('div'); e.id = id; if (html) e.innerHTML = html; g.appendChild(e); return e; };
   BARR.ui = { hud: mk('barrHud'), carry: mk('carryHud', 'CAIXA NA MÃO · ' + (isTouch ? 'toque aqui para soltar' : 'G = soltar')) };
   BARR.ui.carry.addEventListener('click', () => barrDrop());
+  barrNet2('bSync', {});                    // online: pede o estado completo (barricadas e pilhas) de quem já estava jogando
   console.log('✓ barricadas: ' + BARR.slots.map(s => s.name).join(' + ') + ' · pontos de caixas: ' + BARR.spots.length);
   zombieIntro();
 }

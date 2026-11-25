@@ -56,15 +56,73 @@ const ZC = {
   maxAlive: 20, aliveExtra: 4,      // zumbis ao mesmo tempo = maxAlive + aliveExtra por jogador extra
   hp: 140, dmg: 8, range: 1.5, crawlAt: .25, crawlDmgMul: .7,
   atkCd: 800,                       // ms mínimos entre dois golpes do mesmo zumbi
-  maxHit: 80, maxHitDist: 90        // teto de dano por acerto e distância máxima jogador→zumbi aceita
+  maxHit: 80, maxHitDist: 90,       // teto de dano por acerto e distância máxima jogador→zumbi aceita
+  prep: 60,                         // segundos de preparação (barricadas / subir ao telhado) antes da 1ª onda
+  roofY: 5.5,                       // altura dos olhos acima da qual o jogador está no TELHADO (sniper) e os zumbis não o alcançam
+  sniperHit: 170, sniperDist: 170,  // do telhado a bazuca vira sniper: dano e distância maiores são aceitos
+  bossEvery: 3, bossHp: 1500, bossDmg: 26, bossRange: 2.9   // GERENTE ZUMBI: a cada 3 ondas (não conta no total de zumbis)
 };
+// Barricadas de caixas (modo zumbi): o servidor guarda a vida de cada caixa e retransmite colocar/reforçar/dano
+const BARR = { maxSlots: 6, maxCells: 24, hp: 800, maxHit: 60, maxSpots: 32, respawnMs: 18000, stateMs: 4000 };   // hp precisa ser igual a BARR_CFG.crateHp do index.html
+// Energia (disjuntor): a partida começa sem energia? (o cliente recebe isto em 'gameStart')
+const POWER_START_OFF = true;
+const POWER_COOLDOWN_MS = 3000;
+// Eventos programados (iguais para todos): promoção relâmpago, curto-circuito, loot raro no telhado
+const EVT_CFG = {
+  promo: { first: [60, 80], every: [80, 115] },
+  curto: { first: [95, 125], every: [110, 160] },       // só no modo batalha
+  roof:  { first: 4, from: 140, every: [130, 170] },    // só no modo batalha
+  graceMs: 1500                                         // folga depois que todos terminaram de carregar
+};
+const mulberry = a => () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+const hashStr = str => { let h = 2166136261; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; };
+function barrSnapshot(room) {              // estado atual de todas as caixas (vida) e de todos os pontos de caixas
+  const h = {}, sp = {};
+  for (const k in room.barr) if (room.barr[k] > 0) h[k] = room.barr[k];
+  for (const i in room.spots) sp[i] = room.spots[i].n;
+  return { h, sp };
+}
+function buildEvents(roomName, room) {
+  const R = mulberry(hashStr(roomName + ':' + Date.now())), rr = (a, b) => a + R() * (b - a), q = [], C = EVT_CFG;
+  for (let t = rr(...C.promo.first); t < 2400; t += rr(...C.promo.every)) q.push({ t, type: 'promo', seed: Math.floor(R() * 1e9) });
+  if (!zombieRoom(room)) {
+    for (let t = rr(...C.curto.first); t < 2400; t += rr(...C.curto.every)) q.push({ t, type: 'curto', seed: Math.floor(R() * 1e9) });
+    q.push({ t: C.roof.first, type: 'roof', seed: Math.floor(R() * 1e9) });
+    for (let t = C.roof.from; t < 2400; t += rr(...C.roof.every)) q.push({ t, type: 'roof', seed: Math.floor(R() * 1e9) });
+  }
+  q.sort((a, b) => a.t - b.t);
+  room.evt = { q, began: false, t0: 0 };
+}
+// A cada 500 ms: dispara os eventos na hora certa (começa quando todos terminaram de carregar, no máximo 20 s)
+setInterval(() => {
+  const now = Date.now();
+  for (const name in rooms) {
+    const room = rooms[name], E = room.evt;
+    if (zombieRoom(room) && room.started && !room.over && room.spots) {       // caixas: reposição nos pontos + estado completo das barricadas a cada poucos segundos
+      for (const i in room.spots) { const sp = room.spots[i]; if (sp.n < sp.max && now - sp.t >= BARR.respawnMs) { sp.n++; sp.t = now; io.to(name).emit('bSpot', { i: +i, n: sp.n }); } }
+      if (now - (room.barrT || 0) >= BARR.stateMs && (Object.keys(room.barr).length || Object.keys(room.spots).length)) { room.barrT = now; io.to(name).emit('bState', barrSnapshot(room)); }
+    }
+    if (!E || !room.started || room.over) continue;
+    if (!E.began) {
+      const all = Object.keys(room.players).every(id => room.ready && room.ready.has(id));
+      if (!all && now - (room.startAt || now) < 20000) continue;
+      E.began = true; E.t0 = now + EVT_CFG.graceMs;
+    }
+    const el = (now - E.t0) / 1000;
+    while (E.q.length && E.q[0].t <= el) {
+      const ev = E.q.shift();
+      if (ev.type === 'curto') { if (!room.power || !room.power.on) continue; room.power.on = false; }   // a energia cai para todos
+      io.to(name).emit('evt', { type: ev.type, seed: ev.seed });
+    }
+  }
+}, 500);
 const Z_AMMO = [3, 0, 2, 9, 1];     // itens que viram munição (mesma lista AMMO do cliente)
 const zombieRoom = room => !!room && room.mode === 'zombie';
 const maxPlayersOf = room => (zombieRoom(room) ? ZC.maxPlayers : MAX_PLAYERS);
 function newZState(n) {
   return {
     total: ZC.total + ZC.perExtra * (n - 1), wave: ZC.wave + ZC.waveExtra * (n - 1), maxAlive: ZC.maxAlive + ZC.aliveExtra * (n - 1),
-    issued: 0, kills: 0, waves: 0, waveT: ZC.waveEvery - ZC.firstDelay, queue: [], nextId: 1,
+    issued: 0, kills: 0, waves: 0, waveT: ZC.waveEvery - ZC.prep, queue: [], nextId: 1,
     alive: new Map(), pending: new Map(), last: Date.now(), progT: 0,
     ready: new Set(), began: false, startAt: Date.now()      // as ondas só começam quando todos terminam de carregar (máx. 20 s)
   };
@@ -94,7 +152,7 @@ function zTick(roomName, room, now) {
   if (!Z.began) {
     const all = Object.keys(room.players).every(id => Z.ready.has(id));
     if (!all && now - Z.startAt < 20000) { Z.last = now; return; }
-    Z.began = true; Z.last = now; Z.waveT = ZC.waveEvery - ZC.firstDelay;
+    Z.began = true; Z.last = now; Z.waveT = ZC.waveEvery - ZC.prep;   // 60 s para barricar antes da 1ª onda
     room.endAt = now + MATCH_MS; io.to(roomName).emit('matchTime', { endsIn: MATCH_MS });   // 10 minutos de partida
   }
   const dt = Math.min(1, (now - Z.last) / 1000); Z.last = now;
@@ -105,6 +163,7 @@ function zTick(roomName, room, now) {
       Z.waveT = 0; Z.waves++;
       const n = zEnqueue(Z, 'outside', Z.wave);
       if (n) io.to(roomName).emit('zWave', { n: Z.waves, count: n });
+      if (ZC.bossEvery && Z.waves % ZC.bossEvery === 0) Z.queue.unshift('boss');   // GERENTE ZUMBI (fora da contagem do total)
     }
   }
   // entrega os nascimentos ao anfitrião (ele escolhe o ponto e simula)
@@ -130,7 +189,7 @@ function zDamageZombie(roomName, id, amount, byId) {
   const room = rooms[roomName], Z = room && room.z; if (!Z || room.over) return;
   const z = Z.alive.get(id); if (!z) return;
   z.hp -= amount;
-  if (!z.crawl && z.hp > 0 && z.hp <= z.max * ZC.crawlAt) z.crawl = true;     // quase morto: se arrasta
+  if (!z.boss && !z.crawl && z.hp > 0 && z.hp <= z.max * ZC.crawlAt) z.crawl = true;     // quase morto: se arrasta (o chefão não)
   io.to(roomName).emit('zHit', { id, hp: Math.max(0, z.hp), max: z.max, by: byId, crawl: z.crawl });
   if (z.hp <= 0) {
     Z.alive.delete(id); Z.kills++;
@@ -148,7 +207,9 @@ const ITEM_DMG = [14, 20, 16, 18, 30, 28, 34, 32, 50, 26, 24];
 const MELEE_BASE = 30;      // dano do golpe sem item
 const MELEE_RANGE = 3.2;    // alcance do golpe (igual ao cliente)
 const MELEE_DOT = 0.3;      // cone de acerto (igual ao cliente)
-const HIT_DELAY = 150;      // ms entre o clique e o impacto (igual ao cliente)
+const HIT_DELAY = 200;      // ms entre o clique e o impacto com item leve (igual ao cliente)
+const HIT_DELAY_HEAVY = 270;   // idem com item de duas mãos (vassoura, lança, bazuca, marreta, canhão)
+const HEAVY_ITEMS = [3, 5, 6, 8, 10];
 const MAX_THROW_DMG = 80;   // teto de dano aceito para arremessos
 const MAX_THROW_DIST = 60;  // distância máxima atacante→alvo aceita para arremessos
 
@@ -342,8 +403,9 @@ io.on('connection', (socket) => {
       room.started = true; room.over = false; room.teamMode = false;
       ids.forEach(id => { const p = room.players[id]; p.health = 100; p.alive = true; p.weapon = null; p.team = 0; p.kills = 0; p.deaths = 0; p.respawnAt = 0; });
       room.z = newZState(count); room.hostId = ids[0];
+      room.power = { on: !POWER_START_OFF, t: 0 }; room.barr = {}; room.spots = {}; room.ready = new Set(); room.startAt = Date.now(); buildEvents(data.room, room);
       io.to(data.room).emit('updatePlayers', Object.values(room.players));
-      io.to(data.room).emit('gameStart', { spawns: {}, hostId: room.hostId, teamMode: false, mode: 'zombie', zTotal: room.z.total });
+      io.to(data.room).emit('gameStart', { spawns: {}, hostId: room.hostId, teamMode: false, mode: 'zombie', zTotal: room.z.total, power: room.power.on });
       return;
     }
     if (count < 2) {
@@ -372,7 +434,8 @@ io.on('connection', (socket) => {
     room.hostId = ids[0];
     io.to(data.room).emit('updatePlayers', Object.values(room.players));
     room.endAt = Date.now() + MATCH_MS;
-    io.to(data.room).emit('gameStart', { spawns, hostId: room.hostId, teamMode, endsIn: MATCH_MS });
+    room.power = { on: !POWER_START_OFF, t: 0 }; room.ready = new Set(); room.startAt = Date.now(); buildEvents(data.room, room);
+    io.to(data.room).emit('gameStart', { spawns, hostId: room.hostId, teamMode, endsIn: MATCH_MS, power: room.power.on });
   });
 
   socket.on('move', (data) => {
@@ -482,7 +545,7 @@ io.on('connection', (socket) => {
         const dx = mo.x - a.x, dz = mo.z - a.z, dist = Math.hypot(dx, dz);
         if (dist < MELEE_RANGE + .4 && (dx * fx + dz * fz) / (dist || 1) > MELEE_DOT) damageMonster(roomName, dmg, a.id);
       }
-    }, HIT_DELAY);
+    }, (w !== null && HEAVY_ITEMS.includes(w)) ? HIT_DELAY_HEAVY : HIT_DELAY);
   });
 
   // Item equipado (para os outros jogadores verem o item na mão)
@@ -543,16 +606,18 @@ io.on('connection', (socket) => {
 
   // ---- Modo zumbi cooperativo ----
   socket.on('zReady', (data) => {                // o jogador terminou de carregar o mapa
-    const room = rooms[data.room]; if (room && room.z) room.z.ready.add(socket.id);
+    const room = rooms[data.room]; if (!room) return;
+    if (!room.ready) room.ready = new Set(); room.ready.add(socket.id);          // (batalha e zumbi) libera os eventos programados
+    if (room.z) room.z.ready.add(socket.id);
   });
   // O host respondeu ao pedido de nascimento: o zumbi existe e todos passam a vê-lo
   socket.on('zSpawned', (data) => {
     const room = rooms[data.room], Z = room && room.z;
     if (!Z || room.hostId !== socket.id || !Z.pending.has(data.id)) return;
-    Z.pending.delete(data.id);
-    const z = { id: data.id, hp: ZC.hp, max: ZC.hp, x: Number(data.x) || 0, z: Number(data.z) || 0, crawl: false, cd: 0 };
+    const boss = Z.pending.get(data.id).kind === 'boss'; Z.pending.delete(data.id);
+    const z = { id: data.id, hp: boss ? ZC.bossHp : ZC.hp, max: boss ? ZC.bossHp : ZC.hp, boss, x: Number(data.x) || 0, z: Number(data.z) || 0, crawl: false, cd: 0 };
     Z.alive.set(z.id, z);
-    socket.to(data.room).emit('zSpawn', { id: z.id, x: z.x, z: z.z, ry: Number(data.ry) || 0, speed: Number(data.speed) || 2.5 });
+    socket.to(data.room).emit('zSpawn', { id: z.id, x: z.x, z: z.z, ry: Number(data.ry) || 0, speed: Number(data.speed) || 2.5, boss });
   });
   socket.on('zSpawnFail', (data) => {            // o host não achou lugar livre: volta para a fila
     const room = rooms[data.room], Z = room && room.z;
@@ -579,9 +644,10 @@ io.on('connection', (socket) => {
     if (!Z || room.over || room.hostId !== socket.id) return;
     const z = Z.alive.get(data.id), t = room.players[data.target];
     if (!z || !t || !t.alive) return;
-    if (Math.hypot(t.x - z.x, t.z - z.z) > ZC.range + 2.5) return;
+    if ((t.y || 0) > ZC.roofY) return;                                   // quem está no telhado (sniper) os zumbis não alcançam
+    if (Math.hypot(t.x - z.x, t.z - z.z) > (z.boss ? ZC.bossRange : ZC.range) + 2.5) return;
     const now = Date.now(); if (now - z.cd < ZC.atkCd) return; z.cd = now;
-    applyDamage(data.room, 'zombie', t.id, Math.round(ZC.dmg * (z.crawl ? ZC.crawlDmgMul : 1)), 'zombie');
+    applyDamage(data.room, 'zombie', t.id, z.boss ? ZC.bossDmg : Math.round(ZC.dmg * (z.crawl ? ZC.crawlDmgMul : 1)), 'zombie');
   });
   // Qualquer jogador acertou um zumbi (projétil ou golpe)
   socket.on('zDamage', (data) => {
@@ -592,8 +658,9 @@ io.on('connection', (socket) => {
     const now = Date.now();
     if (now - me.dmgWindow > 1000) { me.dmgWindow = now; me.dmgCount = 0; }
     if (++me.dmgCount > 15) return;                                           // no máximo 15 acertos por segundo
-    if (Math.hypot(me.x - z.x, me.z - z.z) > ZC.maxHitDist) return;
-    zDamageZombie(data.room, z.id, Math.min(ZC.maxHit, Math.max(1, Math.round(Number(data.amount) || 0))), socket.id);
+    const roof = (me.y || 0) > ZC.roofY;                                   // no telhado: tiro de sniper (mais forte e de mais longe)
+    if (Math.hypot(me.x - z.x, me.z - z.z) > (roof ? ZC.sniperDist : ZC.maxHitDist)) return;
+    zDamageZombie(data.room, z.id, Math.min(roof ? ZC.sniperHit : ZC.maxHit, Math.max(1, Math.round(Number(data.amount) || 0))), socket.id);
   });
   // Tiro da bazuca: os outros jogadores só veem o voo (o dano vem de 'zDamage')
   socket.on('zShot', (data) => {
@@ -601,6 +668,60 @@ io.on('connection', (socket) => {
     if (!zombieRoom(room) || room.over || !room.players[socket.id] || !room.players[socket.id].alive) return;
     if (!Z_AMMO.includes(data.t)) return;
     socket.to(data.room).emit('zShot', { id: socket.id, t: data.t, x: data.x, y: data.y, z: data.z, dx: data.dx, dy: data.dy, dz: data.dz });
+  });
+
+  // ---- Energia: disjuntor (o cliente manda quando a pessoa termina de acionar) ----
+  socket.on('powerSwitch', (data) => {
+    const room = rooms[data.room];
+    if (!room || !room.started || room.over || !room.power) return;
+    const me = room.players[socket.id]; if (!me || !me.alive) return;
+    const now = Date.now(), on = !!data.on;
+    if (on === room.power.on || now - room.power.t < POWER_COOLDOWN_MS) return;
+    room.power.on = on; room.power.t = now;
+    socket.to(data.room).emit('powerSwitch', { on, by: socket.id });
+  });
+
+  // ---- Barricadas de caixas (modo zumbi): colocar / reforçar / dano dos zumbis (só o anfitrião, que simula os zumbis) ----
+  const barrOk = (d, hostOnly) => {
+    const room = rooms[d && d.room]; if (!zombieRoom(room) || !room.started || room.over || !room.barr) return null;
+    const me = room.players[socket.id]; if (!me || !me.alive || (hostOnly && room.hostId !== socket.id)) return null;
+    const s = d.s | 0, c = d.c | 0; if (s < 0 || s >= BARR.maxSlots || c < 0 || c >= BARR.maxCells) return null;
+    return { room, k: s * 100 + c, s, c };
+  };
+  socket.on('bSync', (d) => {                // quem acabou de carregar pede o estado completo
+    const room = rooms[d && d.room]; if (!zombieRoom(room) || !room.barr || !room.players[socket.id]) return;
+    socket.emit('bState', barrSnapshot(room));
+  });
+  const spotOk = (d) => {
+    const room = rooms[d && d.room]; if (!zombieRoom(room) || !room.started || room.over || !room.spots) return null;
+    const me = room.players[socket.id]; if (!me || !me.alive) return null;
+    const i = d.i | 0, max = Math.min(8, Math.max(1, d.max | 0)); if (i < 0 || i >= BARR.maxSpots) return null;
+    return { room, i, max };
+  };
+  socket.on('bPick', (d) => {                // pegar uma caixa de um ponto: o servidor decide quem pegou a última
+    const r = spotOk(d); if (!r) return;
+    const sp = r.room.spots[r.i] || (r.room.spots[r.i] = { n: r.max, max: r.max, t: 0 });
+    if (sp.n <= 0) { socket.emit('bDeny', { i: r.i }); socket.emit('bSpot', { i: r.i, n: 0 }); return; }
+    sp.n--; sp.t = Date.now(); io.to(d.room).emit('bSpot', { i: r.i, n: sp.n });
+  });
+  socket.on('bPut', (d) => {                 // devolver a caixa (tecla G no coop)
+    const r = spotOk(d); if (!r) return;
+    const sp = r.room.spots[r.i]; if (!sp || sp.n >= sp.max) return;
+    sp.n++; sp.t = Date.now(); io.to(d.room).emit('bSpot', { i: r.i, n: sp.n });
+  });
+  socket.on('bPlace', (d) => {
+    const r = barrOk(d, false); if (!r) return;
+    if ((r.room.barr[r.k] || 0) > 0) { socket.emit('bHp', { s: r.s, c: r.c, hp: r.room.barr[r.k] }); return; }   // alguém já colocou: confirma a vida
+    r.room.barr[r.k] = BARR.hp; socket.to(d.room).emit('bPlace', { s: r.s, c: r.c });
+  });
+  socket.on('bRepair', (d) => {
+    const r = barrOk(d, false); if (!r || !(r.room.barr[r.k] > 0)) return;
+    r.room.barr[r.k] = BARR.hp; socket.to(d.room).emit('bRepair', { s: r.s, c: r.c });
+  });
+  socket.on('bHit', (d) => {
+    const r = barrOk(d, true); if (!r || !(r.room.barr[r.k] > 0)) return;
+    const hp = Math.max(0, r.room.barr[r.k] - Math.min(BARR.maxHit, Math.max(1, Math.round(Number(d.d) || 0))));
+    r.room.barr[r.k] = hp; socket.to(d.room).emit('bHp', { s: r.s, c: r.c, hp });
   });
 
   socket.on('lootTaken', (data) => {
